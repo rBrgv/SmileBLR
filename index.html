@@ -148,6 +148,16 @@ nav.scrolled .hamburger span{background:var(--ink)}
 .affil-role{font-size:.75rem;font-weight:500;color:var(--ink);margin-bottom:.1rem}
 .affil-place{font-size:.68rem;color:var(--mid);font-weight:300}
 .affil-status{font-size:.58rem;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:.1rem}
+.doc-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);margin-top:3rem}
+.doc-card{background:var(--white);padding:1.75rem 1.5rem;display:flex;flex-direction:column;gap:.35rem}
+.doc-card.placeholder{background:var(--cream);opacity:.55}
+.doc-card-initials{width:44px;height:44px;border-radius:50%;background:var(--purple-pale);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:500;color:var(--purple);margin-bottom:.65rem;letter-spacing:.04em}
+.doc-card-initials.ph{background:var(--rule);color:var(--soft)}
+.doc-card-name{font-family:var(--fs);font-size:1.05rem;font-weight:400;color:var(--ink)}
+.doc-card-spec{font-size:.72rem;color:var(--mid);font-weight:300;line-height:1.5}
+.doc-card-qual{font-size:.65rem;color:var(--soft);font-weight:300;margin-top:.15rem}
+.doc-card-badge{display:inline-block;font-size:.56rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;background:var(--purple);color:#fff;padding:.14rem .5rem;margin-top:.5rem;width:fit-content}
+.doc-card-badge.ph{background:var(--rule);color:var(--soft)}
 
 /* SITAR */
 .sitar-feats{border-top:1px solid var(--rule);margin-top:2.25rem}
@@ -237,7 +247,7 @@ footer{background:#111;border-top:1px solid rgba(255,255,255,.06);padding:1.75re
   .nav-inner{padding:0 1.5rem}
   .nav-links{display:none}
   .hamburger{display:flex}
-  .fears-grid,.test-grid,.affil-grid{grid-template-columns:1fr}
+  .fears-grid,.test-grid,.affil-grid,.doc-cards{grid-template-columns:1fr 1fr}
   .svc-item{grid-template-columns:40px 1fr;gap:1rem}
   .svc-desc,.svc-arr{display:none}
   .cred-row{grid-template-columns:75px 1fr;gap:1rem}
@@ -346,13 +356,8 @@ footer{background:#111;border-top:1px solid rgba(255,255,255,.06);padding:1.75re
     </div>
     <div class="hero-right" style="display:flex;flex-direction:column;justify-content:space-between;padding:0;overflow:hidden">
       <div style="flex:1;position:relative;overflow:hidden;min-height:240px">
-        <img id="ci0" src="https://lh3.googleusercontent.com/p/AF1QipOvyPFJwjxO9jJ5r7PLWlxMs5iwp9HIr-k0UFxj=s1360-w1360-h1020-rw" alt="Smile Bengaluru clinic" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .8s ease;opacity:1"/>
-        <img id="ci1" src="https://lh3.googleusercontent.com/p/AF1QipPOBUV6Ivj70b0xdK9WTBx05hbfl-l36R5oD0Hc=s1360-w1360-h1020-rw" alt="Smile Bengaluru reception" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .8s ease;opacity:0"/>
-        <div style="position:absolute;inset:0;background:rgba(61,46,143,.18)"></div>
-        <div style="position:absolute;bottom:.85rem;right:1rem;display:flex;gap:6px">
-          <span id="ci-d0" onclick="setCi(0)" style="width:6px;height:6px;border-radius:50%;background:#fff;opacity:1;cursor:pointer;display:block;transition:opacity .2s"></span>
-          <span id="ci-d1" onclick="setCi(1)" style="width:6px;height:6px;border-radius:50%;background:#fff;opacity:.4;cursor:pointer;display:block;transition:opacity .2s"></span>
-        </div>
+        <img src="https://lh3.googleusercontent.com/p/AF1QipPOBUV6Ivj70b0xdK9WTBx05hbfl-l36R5oD0Hc=s1360-w1360-h1020-rw" alt="Smile Bengaluru reception" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"/>
+        <div style="position:absolute;inset:0;background:rgba(61,46,143,.12)"></div>
       </div>
       <div style="padding:3rem 3.5rem 4rem;flex-shrink:0">
         <div class="hero-divider reveal"></div>
@@ -583,6 +588,39 @@ footer{background:#111;border-top:1px solid rgba(255,255,255,.06);padding:1.75re
       <div style="padding-bottom:0" class="reveal d3"><div style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin-bottom:.35rem">Step 05</div><div style="font-family:var(--fs);font-size:1.15rem;font-weight:400;color:var(--ink);margin-bottom:.3rem">Follow-up and Rehabilitation</div><div style="font-size:.8rem;color:var(--mid);font-weight:300;line-height:1.65">We stay with you after treatment, follow-up care, rehabilitation support, long-term guidance.</div></div>
     </div>
   </div></div>
+
+  <div class="sec">
+    <div class="wrap">
+      <div class="overline reveal">The team</div>
+      <h2 class="h2 reveal d1" style="margin-bottom:0">The doctors behind<br><em>your care.</em></h2>
+      <div class="doc-cards reveal d2">
+        <div class="doc-card">
+          <div class="doc-card-initials">PS</div>
+          <div class="doc-card-name">Dr. Prithvi S. Balepur</div>
+          <div class="doc-card-spec">Oral and Maxillofacial Surgery</div>
+          <div class="doc-card-qual">MDS · MOMS RCPS Glasgow · AAID Fellow</div>
+          <span class="doc-card-badge">Founder</span>
+        </div>
+        <div class="doc-card">
+          <div class="doc-card-initials">SP</div>
+          <div class="doc-card-name">Dr. Sanyukta Prithvi</div>
+          <div class="doc-card-spec">Prosthodontics</div>
+          <div class="doc-card-qual">MDS Prosthodontics · SDM College, Dharwad</div>
+          <span class="doc-card-badge" style="background:var(--gold)">Prosthodontist</span>
+        </div>
+        <div class="doc-card placeholder">
+          <div class="doc-card-initials ph">+</div>
+          <div class="doc-card-name" style="color:var(--soft)">Joining Soon</div>
+          <div class="doc-card-spec" style="color:var(--rule)">Specialist</div>
+        </div>
+        <div class="doc-card placeholder">
+          <div class="doc-card-initials ph">+</div>
+          <div class="doc-card-name" style="color:var(--soft)">Joining Soon</div>
+          <div class="doc-card-spec" style="color:var(--rule)">Specialist</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ SERVICES ═══ -->
@@ -642,8 +680,9 @@ footer{background:#111;border-top:1px solid rgba(255,255,255,.06);padding:1.75re
         <div class="affil-item"><div class="affil-role">Founder and Chief Surgeon</div><div class="affil-place">Smile Bengaluru</div><div class="affil-status">Current</div></div>
         <div class="affil-item"><div class="affil-role">Consultant</div><div class="affil-place">Manipal Hospital, Jayanagar</div><div class="affil-status">Current</div></div>
         <div class="affil-item"><div class="affil-role">Consultant</div><div class="affil-place">Zymus Hospital</div><div class="affil-status">Current</div></div>
-        <div class="affil-item"><div class="affil-role">Dr. Sanyukta Prithvi</div><div class="affil-place">Prosthodontist</div><div class="affil-status">Smile Bengaluru</div></div>
       </div>
+
+
     </div>
     <div class="cred-list">
       <div class="cred-row reveal"><div class="cred-yr">Foundation</div><div><div class="cred-title">BDS, Bachelor of Dental Surgery</div><div class="cred-inst">A.B. Shetty Memorial Institute, Mangalore</div></div></div>
@@ -817,34 +856,6 @@ document.querySelectorAll(".smile-divider").forEach(el=>arcObs.observe(el));
 </script>
 
 <script>
-var _dc=0;
-function setDc(i){
-  [0,1].forEach(function(j){
-    var img=document.getElementById('dc'+j);
-    var dot=document.getElementById('dd'+j);
-    if(img){img.style.opacity=j===i?'1':'0';}
-    if(dot){dot.style.opacity=j===i?'1':'.35';}
-  });
-  _dc=i;
-}
-setInterval(function(){setDc(_dc===0?1:0);},3800);
-</script>
-
-<script>
-var _ci=0;
-function setCi(i){
-  [0,1].forEach(function(j){
-    var img=document.getElementById('ci'+j);
-    var dot=document.getElementById('ci-d'+j);
-    if(img) img.style.opacity=j===i?'1':'0';
-    if(dot) dot.style.opacity=j===i?'1':'.4';
-  });
-  _ci=i;
-}
-setInterval(function(){setCi(_ci===0?1:0);},4500);
-</script>
-
-<script>
 // Doctor photo carousel
 var _dc=0;
 function setDc(i){
@@ -858,18 +869,7 @@ function setDc(i){
 }
 setInterval(function(){setDc(_dc===0?1:0);},3800);
 
-// Clinic photo carousel
-var _ci=0;
-function setCi(i){
-  [0,1].forEach(function(j){
-    var img=document.getElementById('ci'+j);
-    var dot=document.getElementById('ci-d'+j);
-    if(img) img.style.opacity=j===i?'1':'0';
-    if(dot) dot.style.opacity=j===i?'1':'.4';
-  });
-  _ci=i;
-}
-setInterval(function(){setCi(_ci===0?1:0);},4500);
+
 
 // YouTube click to play
 function loadYT(){
