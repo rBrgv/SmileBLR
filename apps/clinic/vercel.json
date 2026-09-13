@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/send-reminders", "schedule": "30 3 * * *" },
+    { "path": "/api/run-campaigns", "schedule": "0 * * * *" }
+  ]
+}
