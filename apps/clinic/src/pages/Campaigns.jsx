@@ -153,7 +153,8 @@ function CampaignForm({ plan, onClose, onDone }) {
       <div className="mrow">
         <div>
           <label>Repeat every (hours) {plan !== 'pro' && <span style={{ color: 'var(--mid)' }}>— Pro only</span>}</label>
-          <input type="number" disabled={plan !== 'pro'} value={f.schedule_hours} onChange={set('schedule_hours')} placeholder="24" />
+          <input type="number" min="24" disabled={plan !== 'pro'} value={f.schedule_hours} onChange={set('schedule_hours')} placeholder="24" />
+          <p style={{ fontSize: '.7rem', color: 'var(--mid)' }}>Checked once daily — 24 is the shortest practical interval.</p>
         </div>
       </div>
       {plan !== 'pro' && (

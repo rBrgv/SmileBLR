@@ -1,15 +1,18 @@
-// Vercel Cron endpoint (hourly — see vercel.json). Automated campaign sending
-// is a Pro-plan feature: on the Free plan this is a deliberate no-op, so
-// clinics only ever get messaged via the manual "Send now" button.
+// Vercel Cron endpoint (daily — see vercel.json; Vercel's Hobby plan only
+// allows daily-or-less-frequent crons, so this can't run more often than
+// once a day regardless of what an individual campaign's schedule_cron says).
+// Automated campaign sending is a Pro-plan feature: on the Free plan this is
+// a deliberate no-op, so clinics only ever get messaged via the manual
+// "Send now" button.
 //
 // Requires, in this project's Vercel env (server-side only):
 //   CRON_SECRET, SUPABASE_SERVICE_ROLE_KEY — same as /api/send-reminders
 import { serviceClient } from './_lib/auth.js'
 import { runCampaign } from './send-campaign.js'
 
-// Hourly cron granularity — treat schedule_cron as "run at most once per this
-// many hours" rather than parsing full cron syntax, since that's all the
-// precision this runner actually has.
+// schedule_cron is treated as "run at most once per this many hours" rather
+// than parsed as full cron syntax — but since this cron itself only fires
+// once a day, nothing shorter than ~24h is actually achievable today.
 function dueToRun(campaign) {
   if (!campaign.schedule_cron) return false
   const hours = parseInt(campaign.schedule_cron, 10)
