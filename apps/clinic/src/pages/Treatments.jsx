@@ -60,16 +60,16 @@ export default function Treatments() {
       </div>
       {!rows.length ? <div className="empty">Empty catalogue. Add Root Canal, Implant, Cleaning…</div> : (
         <table className="tbl">
-          <thead><tr><th>Name</th><th>Category</th><th>Duration</th><th>Price range</th>{isAdmin && <th></th>}</tr></thead>
+          <thead><tr><th>Name</th><th>Category</th><th>Duration</th><th>Price range</th><th></th></tr></thead>
           <tbody>{rows.map(t => (
             <tr key={t.id}>
               <td>{t.name}</td><td>{t.category || '—'}</td>
               <td>{t.typical_duration_minutes ? t.typical_duration_minutes + ' min' : '—'}</td>
               <td>{t.price_min ? `${inr(t.price_min)} – ${inr(t.price_max)}` : '—'}</td>
-              {isAdmin && <td>
+              <td>
                 <button className="btn sm ghost" onClick={() => openEdit(t)}>Edit</button>{' '}
-                <button className="btn sm ghost" onClick={() => remove(t)}>Delete</button>
-              </td>}
+                {isAdmin && <button className="btn sm ghost" onClick={() => remove(t)}>Delete</button>}
+              </td>
             </tr>
           ))}</tbody>
         </table>
