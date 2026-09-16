@@ -36,7 +36,7 @@ npm run dev
    - `VITE_SUPABASE_URL` = https://cdvrkcrcpmaqaaffdfgm.supabase.co
    - `VITE_SUPABASE_ANON_KEY` = (anon public key)
    - `WA_ACCESS_TOKEN` = (Meta permanent token — server only)
-   - `WA_PHONE_NUMBER_ID` = 1188057101050294
+   - `WA_PHONE_NUMBER_ID` = 1339431522582768
    - `WA_APP_SECRET` = (Meta app secret — verifies inbound webhook signatures)
    - `WA_VERIFY_TOKEN` = (random webhook setup token — must match Meta Business Manager)
    - `INTERNAL_API_KEY` = (long random key for trusted server callers of /api/wa-send; never expose it in browser code)
@@ -62,3 +62,7 @@ authenticated account that is unlinked or inactive has no clinic-data access.
 “Normal clinic records” currently includes front-desk, clinical, financial,
 inventory, and compliance records. Receptionist and assistant are distinct
 labels but intentionally have the same database permissions at present.
+
+## First handoff
+
+See [the handoff runbook](docs/first-handoff.md) for migration 016, source reconciliation, staff rehearsal, and backup/restore acceptance. Run clinic regression tests with `cd apps/clinic && npm test`.
