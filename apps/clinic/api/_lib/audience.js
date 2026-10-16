@@ -1,10 +1,12 @@
 // Resolves a campaign's audience type into a list of patients to message.
 // Shared by campaign-audience.js (preview) and send-campaign.js / run-campaigns.js (actual send).
+import { todayLocal } from './clinic-time.js'
+
 export async function resolveAudience(admin, campaign) {
   const { audience, audience_tag } = campaign
 
   if (audience === 'recall_due') {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayLocal()
     const { data } = await admin.from('recall_reminders')
       .select('patient_id, patients(id, full_name, phone)')
       .lte('recall_due_date', today).eq('reminder_sent', false)

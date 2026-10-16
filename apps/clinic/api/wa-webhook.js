@@ -16,6 +16,7 @@
 //   WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID — same as /api/send-reminders
 //   SUPABASE_SERVICE_ROLE_KEY  — to read/update across all patients regardless of RLS
 //   OPENAI_API_KEY             — only needed if booking_bot_enabled is turned on
+import { todayLocal } from './_lib/clinic-time.js'
 import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { sendText } from './_lib/wa.js'
@@ -42,7 +43,7 @@ async function buildSystemPrompt(admin, patient) {
 
   return [
     'You are the WhatsApp receptionist for Smile Bengaluru, a dental clinic.',
-    `Today's date is ${new Date().toISOString().slice(0, 10)}.`,
+    `Today's date is ${todayLocal()}.`,
     `Clinic hours: ${openDays}, ${settings?.open_time ?? '10:00'}–${settings?.close_time ?? '20:00'}.`,
     `Doctors: ${(doctors ?? []).map(d => `${d.full_name}${d.specialization ? ' (' + d.specialization + ')' : ''}`).join('; ') || 'none listed'}.`,
     `Treatments offered: ${(treatments ?? []).map(t => t.name).join(', ') || 'none listed'}.`,
@@ -87,6 +88,15 @@ async function runBookingBot(admin, phone, text) {
   await sendText(phone, reply)
 }
 
+// Typed replies arrive as `text`; taps on a template's quick-reply buttons as
+// `button`; taps on interactive reply buttons as `interactive`.
+function replyText(message) {
+  if (message.type === 'text') return message.text?.body
+  if (message.type === 'button') return message.button?.text
+  if (message.type === 'interactive') return message.interactive?.button_reply?.title
+  return null
+}
+
 async function readRawBody(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
@@ -117,9 +127,9 @@ export default async function handler(req, res) {
 
     const body = JSON.parse(rawBody.toString('utf8'))
     const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
-    if (!message || message.type !== 'text') return res.status(200).json({ received: true })
+    const rawText = (message && replyText(message) || '').trim()
+    if (!rawText) return res.status(200).json({ received: true })
     const from = String(message.from).replace(/\D/g, '')
-    const rawText = (message.text?.body || '').trim()
     const text = rawText.toLowerCase()
     const isConfirm = CONFIRM_WORDS.includes(text)
     const isCancel = CANCEL_WORDS.includes(text)
@@ -151,10 +161,12 @@ export default async function handler(req, res) {
     const status = isConfirm ? 'confirmed' : 'cancelled'
     const { error: updateError } = await admin.from('appointments').update({ status }).eq('id', appt.id)
     if (updateError) throw updateError
+    // Best effort: Supabase returns (not throws) insert errors, so a logging
+    // failure never blocks the patient's reply below.
     await admin.from('activity_log').insert({
       action: `appointment.${status}_whatsapp`, entity_type: 'appointments', entity_id: appt.id,
       summary: `${patient.full_name} ${status} their appointment by replying on WhatsApp`,
-    }).catch(() => {}) // activity_log may not exist yet pre-migration — best effort
+    })
 
     const when = new Date(appt.appointment_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
     await sendText(from, isConfirm

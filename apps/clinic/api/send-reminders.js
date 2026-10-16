@@ -22,6 +22,7 @@
 // this clinic actually contracts with (MSG91, Gupshup, etc. are common in
 // India) if Twilio isn't it. Untested against a live Twilio account; the
 // request shape is right, but there's no way to confirm delivery from here.
+import { todayLocal } from './_lib/clinic-time.js'
 import { createClient } from '@supabase/supabase-js'
 import { sendWhatsApp, sendSMS } from './_lib/wa.js'
 
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
   }
 
   // 2) Overdue recall reminders not yet sent
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayLocal()
   const { data: recalls } = await admin.from('recall_reminders')
     .select('id, patients(full_name, phone)')
     .lte('recall_due_date', today).eq('reminder_sent', false)

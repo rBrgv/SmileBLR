@@ -1,6 +1,7 @@
 // OpenAI tool-calling definitions + handlers for the WhatsApp booking bot.
 // Every handler is scoped to the verified sender's own phone/patient —
 // never a value the model could supply on the caller's behalf.
+import './clinic-time.js'
 import { getOpenSlots, isSlotFree } from './slots.js'
 import { sendText } from './wa.js'
 

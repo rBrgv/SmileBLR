@@ -2,6 +2,8 @@
 // leave check + same-day overlap test), so the booking bot can offer and
 // validate real slots. Appointments.jsx keeps its own client-side copy for
 // the staff-facing manual-booking UI — this is not meant to replace that.
+import './clinic-time.js'
+
 function overlaps(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && aEnd > bStart
 }
