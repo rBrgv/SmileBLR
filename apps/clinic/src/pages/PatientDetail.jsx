@@ -1,3 +1,10 @@
+import Consultations from '../components/Consultations'
+import RxForm from '../components/PrescriptionForm'
+import InvoiceForm from '../components/InvoiceForm'
+import ClinicalButton from '../components/ClinicalButton'
+import { canWriteClinical, medicinesFor } from '../lib/clinical'
+import PaymentEditor from '../components/PaymentEditor'
+import { billed, received, balance } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -8,7 +15,8 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import CancelReasonDialog from '../components/CancelReasonDialog'
 import StatusSelect from '../components/StatusSelect'
 import ToothChart, { TOOTH_CONDITIONS } from '../components/ToothChart'
-import { toothLabel } from '../lib/teeth'
+import ToothSelect from '../components/ToothSelect'
+import { toothLabel, isValidTooth } from '../lib/teeth'
 import XRayPanel from '../components/XRayPanel'
 import PatientDocumentsPanel from '../components/PatientDocumentsPanel'
 import TreatmentRecordPanel from '../components/TreatmentRecordPanel'
@@ -18,7 +26,7 @@ import { AppointmentForm, APPT_STATUSES, completeAppointment } from './Appointme
 import { useRole } from '../lib/RoleContext'
 import { logActivity } from '../lib/activityLog'
 
-const TABS = ['Overview', 'Tooth Chart', 'Medical History', 'Appointments', 'Prescriptions', 'Invoices', 'X-Rays', 'Treatment Records', 'Perio Chart', 'Documents']
+const TABS = ['Overview', 'Tooth Chart', 'Medical History', 'Appointments', 'Prescriptions', 'Invoices', 'X-Rays', 'Treatment Records', 'Perio Chart', 'Documents', 'Consultations']
 
 export default function PatientDetail() {
   const { id } = useParams()
@@ -59,11 +67,6 @@ export default function PatientDetail() {
   function onApptStatusChange(a, status) {
     if (status === 'cancelled' || status === 'no_show') setReasonPrompt({ a, status }); else setApptStatus(a, status)
   }
-  async function setInvStatus(vid, status) {
-    const { error } = await sb.from('invoices').update({ payment_status: status }).eq('id', vid)
-    if (error) return toast('Error: ' + error.message)
-    toast('Invoice ' + status); load()
-  }
 
   return (
     <>
@@ -74,7 +77,13 @@ export default function PatientDetail() {
         <div>
           <h3>{p.full_name}{(p.tags || []).map(t => <span key={t} className="badge b-partial" style={{ marginLeft: '.5rem' }}>{t}</span>)}</h3>
           <div className="sub">
-            {p.phone}{p.email && ' · ' + p.email}{p.date_of_birth && ' · DOB ' + fmtD(p.date_of_birth)}{p.gender && ' · ' + p.gender}<br />
+            {p.phone || 'Phone not recorded'}{p.email && ' · ' + p.email}{p.date_of_birth && ' · DOB ' + fmtD(p.date_of_birth)}{p.gender && ' · ' + p.gender}
+            {/* Click4Appointment recorded an age, not a birth date. Show it with
+                the date it was taken, and prompt for the real one. */}
+            {!p.date_of_birth && p.approx_age != null && <>
+              {' · '}Age {p.approx_age} as of {fmtD(p.approx_age_recorded_on)}
+              {' '}<button className="btn sm ghost" onClick={() => setModal({ type: 'edit' })}>Confirm date of birth</button>
+            </>}<br />
             {p.address && <>{p.address}<br /></>}
             Registered {fmtD(p.created_at)} · Consent {p.consent_given ? '✓ ' + fmtD(p.consent_date) : '✗'}
             {p.referral_source && <> · via {p.referral_source}</>}
@@ -82,7 +91,7 @@ export default function PatientDetail() {
         </div>
         <div>
           <button className="btn ghost sm" onClick={() => setModal({ type: 'edit' })}>Edit</button>{' '}
-          <a className="btn sm green" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(p.phone)}>WhatsApp</a>
+          {p.phone && <a className="btn sm green" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(p.phone)}>WhatsApp</a>}
         </div>
       </div>
 
@@ -98,11 +107,12 @@ export default function PatientDetail() {
             <div className="stat"><b>{d.appts.length}</b><span>Appointments</span></div>
             <div className="stat pink"><b>{d.teeth.filter(t => t.condition && t.condition !== 'Healthy').length}</b><span>Teeth flagged</span></div>
             <div className="stat gold"><b>{d.rx.length}</b><span>Prescriptions</span></div>
-            <div className="stat green"><b>{inr(d.inv.filter(v => v.payment_status === 'paid').reduce((a, v) => a + Number(v.amount), 0))}</b><span>Paid to date</span></div>
+            <div className="stat green"><b>{inr(d.inv.reduce((a, v) => a + received(v), 0))}</b><span>Paid to date</span></div>
           </div>
           <button className="btn" onClick={() => setModal({ type: 'appt' })}>+ Appointment</button>{' '}
-          <button className="btn ghost" onClick={() => setModal({ type: 'rx' })}>+ Prescription</button>{' '}
+          <ClinicalButton className="btn ghost" onClick={() => setModal({ type: 'rx' })}>+ Prescription</ClinicalButton>{' '}
           <button className="btn ghost" onClick={() => setModal({ type: 'inv' })}>+ Invoice</button>
+          {p.import_source && <details className="overview-card"><summary>Original Click4Appointments record</summary><p>Source values retained for reconciliation. Pending-payment text here does not create an invoice or establish a verified balance.</p><table className="tbl"><tbody>{Object.entries(p.import_source).filter(([, v]) => v).map(([k, v]) => <tr key={k}><th>{k}</th><td style={{ whiteSpace: 'pre-wrap' }}>{String(v)}</td></tr>)}</tbody></table></details>}
           <div className="overview-card">
             <FamilySection patient={p} onChanged={load} />
             {(role === 'admin' || role === 'doctor') && <MergeDuplicateSection patient={p} onMerged={load} />}
@@ -110,7 +120,7 @@ export default function PatientDetail() {
         </>
       )}
 
-      {tab === 1 && <ToothChart teeth={d.teeth} dateOfBirth={p.date_of_birth} onSelect={(n, t) => setModal({ type: 'tooth', n, t })} />}
+      {tab === 1 && <ToothChart readOnly={!canWriteClinical(role)} teeth={d.teeth} dateOfBirth={p.date_of_birth} onSelect={(n, t) => canWriteClinical(role) && setModal({ type: 'tooth', n, t })} />}
 
       {tab === 2 && <MedicalHistory patientId={id} mh={d.mh} onSaved={load} />}
 
@@ -125,6 +135,7 @@ export default function PatientDetail() {
                   <td>{fmtDT(a.appointment_time)}</td><td>{a.staff?.full_name || '—'}</td>
                   <td>{a.treatments?.name || '—'}</td><td>{a.floor_room || '—'}</td>
                   <td>
+                    <button className="btn sm ghost" onClick={() => setModal({ type: 'appt', payload: a })}>Edit / reschedule</button>
                     <StatusSelect value={a.status} options={APPT_STATUSES} onChange={s => onApptStatusChange(a, s)} />
                     {a.status_reason && <div style={{ fontSize: '.66rem', color: 'var(--soft)', marginTop: '.2rem' }}>{a.status_reason}</div>}
                   </td>
@@ -137,14 +148,14 @@ export default function PatientDetail() {
 
       {tab === 4 && (
         <>
-          <button className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setModal({ type: 'rx' })}>+ New prescription</button>
+          <ClinicalButton className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setModal({ type: 'rx' })}>+ New prescription</ClinicalButton>
           {!d.rx.length ? <div className="empty">No prescriptions.</div> : (
             <table className="tbl">
               <thead><tr><th>Date</th><th>Medicine</th><th>Dosage</th><th>Duration</th><th>By</th><th></th></tr></thead>
               <tbody>{d.rx.map(r => (
                 <tr key={r.id}>
-                  <td>{fmtD(r.prescribed_date)}</td><td>{r.medicine_name}</td>
-                  <td>{r.dosage || '—'}</td><td>{r.duration || '—'}</td><td>{r.staff?.full_name || '—'}</td>
+                  <td>{fmtD(r.prescribed_date)}</td><td>{medicinesFor(r).map(m => m.name).join(', ')}</td>
+                  <td>{medicinesFor(r).length > 1 ? 'See prescription' : r.dosage || '—'}</td><td>{medicinesFor(r).length > 1 ? 'See prescription' : r.duration || '—'}</td><td>{r.staff?.full_name || '—'}</td>
                   <td><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/prescription/' + r.id}>Print</a></td>
                 </tr>
               ))}</tbody>
@@ -153,7 +164,7 @@ export default function PatientDetail() {
         </>
       )}
 
-      {tab === 5 && <Ledger inv={d.inv} onNew={() => setModal({ type: 'inv' })} onStatus={setInvStatus} />}
+      {tab === 5 && <Ledger inv={d.inv} onNew={() => setModal({ type: 'inv' })} onSaved={load} />}
 
       {tab === 6 && <XRayPanel patientId={id} />}
 
@@ -161,10 +172,12 @@ export default function PatientDetail() {
 
       {tab === 8 && <PerioChart patientId={id} />}
 
+      {tab === 10 && <Consultations patientId={id} />}
+
       {tab === 9 && <PatientDocumentsPanel patientId={id} />}
 
       {modal?.type === 'edit' && <PatientForm patient={p} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
-      {modal?.type === 'appt' && <AppointmentForm patientId={id} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
+      {modal?.type === 'appt' && <AppointmentForm appointment={modal.payload} patientId={id} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'tooth' && <ToothForm patientId={id} n={modal.n} t={modal.t} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'rx' && <RxForm patientId={id} doctors={d.docs} allergies={d.mh?.allergies} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'inv' && <InvoiceForm patientId={id} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
@@ -351,16 +364,16 @@ function LinkFamilyForm({ excludeId, onClose, onDone }) {
 
 // Chronological account statement — running balance, oldest first, so a
 // patient's "what do I owe" question can be answered from one screen.
-function Ledger({ inv, onNew, onStatus }) {
-  const billed = v => Number(v.amount) + Number(v.tax_amount || 0)
+function Ledger({ inv, onNew, onSaved }) {
   const totalBilled = inv.reduce((a, v) => a + billed(v), 0)
-  const totalPaid = inv.filter(v => v.payment_status === 'paid').reduce((a, v) => a + billed(v), 0)
-  const outstanding = inv.filter(v => v.payment_status === 'pending' || v.payment_status === 'partial').reduce((a, v) => a + billed(v), 0)
+  const totalPaid = inv.reduce((a, v) => a + received(v), 0)
+  const outstanding = inv.reduce((a, v) => a + balance(v), 0)
   const asc = [...inv].sort((a, b) => new Date(a.invoice_date) - new Date(b.invoice_date))
   let running = 0
 
   return (
     <>
+      {inv.some(v => v.payment_status === 'partial' && v.amount_paid == null) && <p className="allergy-alert">Unreconciled partial payments: balances below include their full invoice amounts until corrected.</p>}
       <button className="btn" style={{ marginBottom: '.75rem' }} onClick={onNew}>+ New invoice</button>
       {!inv.length ? <div className="empty">No invoices.</div> : (
         <>
@@ -372,12 +385,12 @@ function Ledger({ inv, onNew, onStatus }) {
           <table className="tbl">
             <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th>Balance due</th><th></th></tr></thead>
             <tbody>{asc.map(v => {
-              if (v.payment_status !== 'paid' && v.payment_status !== 'refunded') running += billed(v)
+              running += balance(v)
               return (
                 <tr key={v.id}>
                   <td>{fmtD(v.invoice_date)}</td><td>{inr(billed(v))}</td><td>{v.payment_method || '—'}</td>
                   <td>{v.staff?.full_name || '—'}</td>
-                  <td><StatusSelect value={v.payment_status} options={['pending', 'partial', 'paid', 'refunded']} onChange={s => onStatus(v.id, s)} /></td>
+                  <td><PaymentEditor invoice={v} onDone={onSaved} /></td>
                   <td>{inr(running)}</td>
                   <td><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a></td>
                 </tr>
@@ -396,6 +409,7 @@ function MedicalHistory({ patientId, mh, onSaved }) {
     pregnancy_status: mh?.pregnancy_status || false, notes: mh?.notes || '',
   })
   const toast = useToast()
+  const editable = canWriteClinical(useRole())
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
 
   async function save() {
@@ -403,14 +417,14 @@ function MedicalHistory({ patientId, mh, onSaved }) {
       patient_id: patientId, condition: f.condition.trim() || null, allergies: f.allergies.trim() || null,
       current_medications: f.current_medications.trim() || null, pregnancy_status: f.pregnancy_status, notes: f.notes.trim() || null,
     }
-    const q = mh?.id ? sb.from('medical_history').update(rec).eq('id', mh.id) : sb.from('medical_history').insert(rec)
+    const q = sb.from('medical_history').insert(rec)
     const { error } = await q
     if (error) return toast('Error: ' + error.message)
     toast('Medical history saved'); onSaved()
   }
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <fieldset disabled={!editable} style={{ maxWidth: 640, border: 0 }}>
       <div className="mrow">
         <div><label>Conditions</label><input placeholder="Diabetes, hypertension…" value={f.condition} onChange={set('condition')} /></div>
         <div><label>Allergies</label><input placeholder="Penicillin…" value={f.allergies} onChange={set('allergies')} /></div>
@@ -422,16 +436,16 @@ function MedicalHistory({ patientId, mh, onSaved }) {
       </label>
       <label>Notes</label><textarea rows={2} value={f.notes} onChange={set('notes')} />
       <button className="btn" style={{ marginTop: '1rem' }} onClick={save}>Save medical history</button>
-    </div>
+    </fieldset>
   )
 }
 
 function ToothForm({ patientId, n, t, doctors, onClose, onDone }) {
-  const [f, setF] = useState({ condition: t?.condition || 'Healthy', treating_doctor_id: t?.treating_doctor_id || '', notes: t?.notes || '' })
+  const [f, setF] = useState({ tooth_number: n, condition: t?.condition || 'Healthy', treating_doctor_id: t?.treating_doctor_id || '', notes: t?.notes || '' })
   const toast = useToast()
   async function save() {
     const rec = {
-      patient_id: patientId, tooth_number: n, condition: f.condition,
+      patient_id: patientId, tooth_number: Number(f.tooth_number), condition: f.condition,
       treating_doctor_id: f.treating_doctor_id || null, notes: f.notes.trim() || null, treatment_date: today(),
     }
     const q = t?.id ? sb.from('tooth_chart').update(rec).eq('id', t.id) : sb.from('tooth_chart').insert(rec)
@@ -441,6 +455,7 @@ function ToothForm({ patientId, n, t, doctors, onClose, onDone }) {
   }
   return (
     <Modal title={toothLabel(n)} onClose={onClose}>
+      {!isValidTooth(n) && <label>Correct FDI tooth number<ToothSelect value={isValidTooth(Number(f.tooth_number)) ? f.tooth_number : ''} onChange={e => setF(x => ({...x,tooth_number:e.target.value}))}/></label>}
       <label>Condition</label>
       <select value={f.condition} onChange={e => setF(x => ({ ...x, condition: e.target.value }))}>
         {TOOTH_CONDITIONS.map(c => <option key={c}>{c}</option>)}
@@ -455,96 +470,3 @@ function ToothForm({ patientId, n, t, doctors, onClose, onDone }) {
   )
 }
 
-// Keyword match only — catches the patient's allergy word appearing literally
-// in the medicine name (e.g. allergy "Penicillin" + medicine "Penicillin V").
-// It will NOT catch cross-class reactions (e.g. Amoxicillin vs a Penicillin
-// allergy) — that needs a real drug database, which is out of scope here.
-function allergyHit(allergies, medicineName) {
-  if (!allergies || !medicineName) return null
-  const med = medicineName.toLowerCase()
-  return (allergies.split(/[,;]/).map(a => a.trim()).filter(Boolean))
-    .find(a => med.includes(a.toLowerCase()) || a.toLowerCase().includes(med)) || null
-}
-
-function RxForm({ patientId, doctors, allergies, onClose, onDone }) {
-  const [f, setF] = useState({ medicine_name: '', dosage: '', duration: '', prescribed_by: '', notes: '' })
-  const [allergyConfirm, setAllergyConfirm] = useState(null)
-  const toast = useToast()
-  const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
-  async function doInsert() {
-    const { error } = await sb.from('prescriptions').insert({
-      patient_id: patientId, medicine_name: f.medicine_name.trim(), dosage: f.dosage.trim() || null,
-      duration: f.duration.trim() || null, prescribed_by: f.prescribed_by || null, notes: f.notes.trim() || null,
-    })
-    if (error) return toast('Error: ' + error.message)
-    toast('Prescription saved'); onDone()
-  }
-  async function save() {
-    if (!f.medicine_name.trim()) return toast('Medicine name required.')
-    const hit = allergyHit(allergies, f.medicine_name.trim())
-    if (hit) return setAllergyConfirm(hit)
-    doInsert()
-  }
-  return (
-    <>
-    <Modal title="New prescription" onClose={onClose}>
-      {allergies && <div className="allergy-alert" style={{ marginBottom: '1rem' }}>⚠ Allergy on file: {allergies}</div>}
-      <label>Medicine *</label><input value={f.medicine_name} onChange={set('medicine_name')} />
-      <div className="mrow">
-        <div><label>Dosage</label><input placeholder="500mg twice daily" value={f.dosage} onChange={set('dosage')} /></div>
-        <div><label>Duration</label><input placeholder="5 days" value={f.duration} onChange={set('duration')} /></div>
-      </div>
-      <label>Prescribed by</label>
-      <select value={f.prescribed_by} onChange={set('prescribed_by')}>
-        <option value="">—</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
-      </select>
-      <label>Notes</label><input value={f.notes} onChange={set('notes')} />
-      <button className="btn" onClick={save}>Save prescription</button>
-    </Modal>
-    {allergyConfirm && (
-      <ConfirmDialog title="Possible allergy conflict"
-        body={`Patient has a recorded allergy to "${allergyConfirm}" — prescribe "${f.medicine_name.trim()}" anyway?`}
-        confirmLabel="Prescribe anyway" onCancel={() => setAllergyConfirm(null)}
-        onConfirm={() => { setAllergyConfirm(null); doInsert() }} />
-    )}
-    </>
-  )
-}
-
-function InvoiceForm({ patientId, doctors, onClose, onDone }) {
-  const [f, setF] = useState({ amount: '', tax_amount: '', payment_method: '', doctor_id: '', notes: '' })
-  const toast = useToast()
-  const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
-  async function save() {
-    const amt = parseFloat(f.amount)
-    if (!amt) return toast('Enter an amount.')
-    const { error } = await sb.from('invoices').insert({
-      patient_id: patientId, amount: amt, tax_amount: parseFloat(f.tax_amount) || null,
-      payment_method: f.payment_method || null, doctor_id: f.doctor_id || null, notes: f.notes.trim() || null,
-    })
-    if (error) return toast('Error: ' + error.message)
-    toast('Invoice created'); onDone()
-  }
-  return (
-    <Modal title="New invoice" onClose={onClose}>
-      <div className="mrow">
-        <div><label>Amount (INR) *</label><input type="number" value={f.amount} onChange={set('amount')} /></div>
-        <div><label>Tax (optional)</label><input type="number" placeholder="If applicable" value={f.tax_amount} onChange={set('tax_amount')} /></div>
-      </div>
-      <div className="mrow">
-        <div><label>Payment method</label>
-          <select value={f.payment_method} onChange={set('payment_method')}>
-            <option value="">—</option><option>cash</option><option>card</option><option>upi</option><option>insurance</option>
-          </select>
-        </div>
-        <div><label>Treating doctor</label>
-          <select value={f.doctor_id} onChange={set('doctor_id')}>
-            <option value="">—</option>{(doctors || []).map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
-          </select>
-        </div>
-      </div>
-      <label>Notes</label><input value={f.notes} onChange={set('notes')} />
-      <button className="btn" onClick={save}>Save invoice</button>
-    </Modal>
-  )
-}

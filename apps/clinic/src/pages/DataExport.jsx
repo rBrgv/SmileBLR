@@ -1,17 +1,12 @@
-import { useState } from 'react'
+import { fetchAll } from '../lib/handoff'
+import { useState, useRef } from 'react'
 import { sb } from '../lib/supabase'
 import { today } from '../lib/format'
 import { useToast } from '../components/Toast'
 import { useRole } from '../lib/RoleContext'
 
-const TABLES = [
-  { key: 'patients', label: 'Patients', select: '*' },
-  { key: 'appointments', label: 'Appointments', select: '*, patients(full_name), staff(full_name), treatments(name)' },
-  { key: 'invoices', label: 'Invoices', select: '*, patients(full_name)' },
-  { key: 'treatment_plans', label: 'Treatment Plans', select: '*, patients(full_name)' },
-  { key: 'treatment_records', label: 'Treatment Records', select: '*, patients(full_name)' },
-  { key: 'prescriptions', label: 'Prescriptions', select: '*, patients(full_name)' },
-]
+const TABLES = ['consultations', 'consultation_amendments', 'consent_templates', 'patients', 'medical_history', 'appointments', 'appointment_waitlist', 'invoices', 'invoice_payment_changes', 'treatment_plans', 'treatment_plan_stages', 'treatment_records', 'prescriptions', 'tooth_chart', 'periodontal_exams', 'periodontal_readings', 'xray_images', 'patient_documents', 'consent_forms', 'recall_reminders', 'lab_orders', 'referrals', 'insurance_claims', 'inventory', 'staff', 'staff_leave', 'treatments', 'plan_templates', 'plan_template_stages', 'compliance_logs', 'activity_log', 'bookings', 'clinic_settings', 'campaigns', 'campaign_sends', 'wa_conversations', 'wa_messages'].map(key => ({ key, label: key.replaceAll('_', ' '), select: '*' }))
+
 
 // Flattens one level of nested relation objects (e.g. patients: {full_name}
 // becomes patients_full_name) so the CSV stays a plain flat table.
@@ -32,17 +27,17 @@ function toCSV(rows) {
   const escape = v => {
     if (v == null) return ''
     // Spreadsheet apps interpret these prefixes as formulas, even in CSVs.
-    const raw = String(v)
+    const raw = typeof v === 'object' ? JSON.stringify(v) : String(v)
     const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
   }
   const lines = [headers.join(',')]
   flat.forEach(r => lines.push(headers.map(h => escape(r[h])).join(',')))
   return lines.join('\n')
 }
 
-function download(filename, content) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+function download(filename, content, type = 'text/csv;charset=utf-8;') {
+  const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = filename
@@ -51,19 +46,38 @@ function download(filename, content) {
 }
 
 export default function DataExport() {
+  const lock = useRef(false)
   const [busy, setBusy] = useState(null) // table key currently exporting
   const toast = useToast()
   const role = useRole()
   const isAdmin = role === 'admin'
 
   async function exportTable(t) {
-    setBusy(t.key)
-    const { data, error } = await sb.from(t.key).select(t.select).limit(10000)
-    setBusy(null)
-    if (error) return toast('Error: ' + error.message)
-    if (!data?.length) return toast('No data to export for ' + t.label)
-    download(`${t.key}-${today()}.csv`, toCSV(data))
-    toast(t.label + ' exported')
+    if (lock.current) return
+    lock.current = true; setBusy(t.key)
+    try {
+      const data = await fetchAll(() => sb.from(t.key).select(t.select).order('id'))
+      if (!data.length) return toast('No data for ' + t.label)
+      download(`${t.key}-${today()}.csv`, toCSV(data))
+      toast(`${data.length} ${t.label} exported`)
+    } catch (e) { toast('Export failed: ' + e.message) }
+    finally { lock.current = false; setBusy(null) }
+  }
+  async function exportSnapshot() {
+    if (lock.current) return
+    lock.current = true; setBusy('snapshot')
+    try {
+      const snapshot = { format: 'smileblr-records-v1', started_at: new Date().toISOString(), tables: {}, counts: {} }
+      for (const t of TABLES) {
+        setBusy(t.key)
+        snapshot.tables[t.key] = await fetchAll(() => sb.from(t.key).select('*').order('id'))
+        snapshot.counts[t.key] = snapshot.tables[t.key].length
+      }
+      snapshot.finished_at = new Date().toISOString()
+      download(`clinic-records-${today()}.json`, JSON.stringify(snapshot, null, 2), 'application/json')
+      toast('All record tables exported')
+    } catch (e) { toast('Snapshot failed; no partial snapshot downloaded: ' + e.message) }
+    finally { lock.current = false; setBusy(null) }
   }
 
   if (!isAdmin) return <div className="empty">Only admins can export data.</div>
@@ -72,15 +86,16 @@ export default function DataExport() {
     <>
       <div className="pagehead"><h2>Data export</h2></div>
       <p style={{ fontSize: '.74rem', color: 'var(--mid)', marginBottom: '1rem' }}>
-        Download a CSV snapshot of core records — for backups, migrating elsewhere, or handing data to your accountant.
+        Download individual CSVs or all record tables as JSON with row counts. Exports include archived records. Pause editing during export to keep the tables consistent. Uploaded file contents and login accounts are not included; retain separate database and storage backups.
       </p>
+      <button className="btn" disabled={!!busy} onClick={exportSnapshot}>{busy ? 'Exporting…' : 'Download all records (JSON)'}</button>
       <table className="tbl">
         <thead><tr><th>Table</th><th></th></tr></thead>
         <tbody>{TABLES.map(t => (
           <tr key={t.key}>
             <td>{t.label}</td>
             <td>
-              <button className="btn sm ghost" disabled={busy === t.key} onClick={() => exportTable(t)}>
+              <button className="btn sm ghost" disabled={!!busy} onClick={() => exportTable(t)}>
                 {busy === t.key ? 'Exporting…' : 'Download CSV'}
               </button>
             </td>

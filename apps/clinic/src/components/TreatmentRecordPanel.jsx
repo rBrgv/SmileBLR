@@ -1,3 +1,4 @@
+import ClinicalButton from './ClinicalButton'
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 import { fmtD, today } from '../lib/format'
@@ -84,7 +85,7 @@ export function RecordForm({ patientId, stageId, onClose, onDone }) {
           })} /> Follow-up call required (defaults to 2 days later — shows up on the Dashboard's daily call list)
       </label>
       {f.follow_up_required && <><label>Follow-up date</label><input type="date" value={f.follow_up_date} onChange={set('follow_up_date')} /></>}
-      <button className="btn" onClick={save}>Save record</button>
+      <ClinicalButton className="btn" onClick={save}>Save record</ClinicalButton>
     </Modal>
   )
 }
@@ -111,7 +112,7 @@ export default function TreatmentRecordPanel({ patientId }) {
   }
 
   async function markCalled(id) {
-    const { error } = await sb.from('treatment_records').update({ follow_up_required: false }).eq('id', id)
+    const { error } = await sb.rpc('mark_followup_called', { p_id: id })
     if (error) return toast('Error: ' + error.message)
     toast('Marked as called'); load()
   }
@@ -119,7 +120,7 @@ export default function TreatmentRecordPanel({ patientId }) {
   if (!rows) return <div className="empty">Loading…</div>
   return (
     <>
-      <button className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setShow(true)}>+ New record</button>
+      <ClinicalButton className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setShow(true)}>+ New record</ClinicalButton>
       {!rows.length ? <div className="empty">No treatment records yet.</div> : (
         <table className="tbl">
           <thead><tr><th>Date</th><th>Treatment</th><th>Tooth</th><th>By</th><th>Follow-up</th><th></th></tr></thead>
@@ -131,7 +132,7 @@ export default function TreatmentRecordPanel({ patientId }) {
                 {r.follow_up_required && <>{' '}<button className="btn sm ghost" onClick={() => markCalled(r.id)}>Mark called</button></>}</td>
               <td>
                 <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/post-op/' + r.id}>Post-op instructions</a>{' '}
-                <button className="btn sm ghost danger" onClick={() => setConfirmDel(r.id)}>Delete</button>
+                <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(r.id)}>Delete</ClinicalButton>
               </td>
             </tr>
           ))}</tbody>

@@ -1,3 +1,4 @@
+import ClinicalButton from '../components/ClinicalButton'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -31,7 +32,7 @@ export default function TreatmentRecords() {
   }
 
   async function markCalled(id) {
-    const { error } = await sb.from('treatment_records').update({ follow_up_required: false }).eq('id', id)
+    const { error } = await sb.rpc('mark_followup_called', { p_id: id })
     if (error) return toast('Error: ' + error.message)
     toast('Marked as called'); load()
   }
@@ -43,7 +44,7 @@ export default function TreatmentRecords() {
     <>
       <div className="pagehead">
         <h2>Treatment records</h2>
-        <button className="btn" onClick={() => setShow(true)}>+ New record</button>
+        <ClinicalButton className="btn" onClick={() => setShow(true)}>+ New record</ClinicalButton>
       </div>
       <div className="bar"><input placeholder="Search patient…" value={q} onChange={e => setQ(e.target.value)} /></div>
       {!view.length ? <div className="empty">No treatment records yet.</div> : (
@@ -59,7 +60,7 @@ export default function TreatmentRecords() {
                 {r.follow_up_required && <>{' '}<button className="btn sm ghost" onClick={() => markCalled(r.id)}>Mark called</button></>}</td>
               <td>
                 <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/post-op/' + r.id}>Post-op</a>{' '}
-                <button className="btn sm ghost danger" onClick={() => setConfirmDel(r.id)}>Delete</button>
+                <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(r.id)}>Delete</ClinicalButton>
               </td>
             </tr>
           ))}</tbody>

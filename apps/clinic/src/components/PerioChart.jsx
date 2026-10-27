@@ -1,3 +1,4 @@
+import ClinicalButton from './ClinicalButton'
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 import { fmtD, today } from '../lib/format'
@@ -24,7 +25,7 @@ export default function PerioChart({ patientId }) {
   if (!rows) return <div className="empty">Loading…</div>
   return (
     <>
-      <button className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setShow(true)}>+ New perio exam</button>
+      <ClinicalButton className="btn" style={{ marginBottom: '.75rem' }} onClick={() => setShow(true)}>+ New perio exam</ClinicalButton>
       {!rows.length ? <div className="empty">No periodontal exams recorded.</div> : (
         <table className="tbl">
           <thead><tr><th>Date</th><th>Performed by</th><th>Notes</th><th></th></tr></thead>
@@ -87,14 +88,14 @@ function ExamForm({ patientId, onClose, onDone }) {
             <tr key={i}>
               <td>{r.tooth_number}</td><td>{r.pocket_depth_buccal ?? '—'}</td><td>{r.pocket_depth_lingual ?? '—'}</td>
               <td>{r.recession ?? '—'}</td><td>{r.bleeding_on_probing ? 'Yes' : 'No'}</td><td>{r.mobility ?? '—'}</td>
-              <td><button className="btn sm ghost danger" onClick={() => removeReading(i)}>Remove</button></td>
+              <td><ClinicalButton className="btn sm ghost danger" onClick={() => removeReading(i)}>Remove</ClinicalButton></td>
             </tr>
           ))}</tbody>
         </table>
       )}
-      <button type="button" className="btn sm ghost" onClick={() => setShowReading(true)}>+ Add tooth reading</button>
+      <ClinicalButton type="button" className="btn sm ghost" onClick={() => setShowReading(true)}>+ Add tooth reading</ClinicalButton>
 
-      <button className="btn" style={{ marginTop: '1.25rem' }} onClick={save}>Save exam</button>
+      <ClinicalButton className="btn" style={{ marginTop: '1.25rem' }} onClick={save}>Save exam</ClinicalButton>
       {showReading && <ReadingForm onClose={() => setShowReading(false)} onAdd={addReading} />}
     </Modal>
   )

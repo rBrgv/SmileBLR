@@ -1,3 +1,4 @@
+import { received, localDate, fetchAll } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -29,7 +30,7 @@ export default function Dashboard() {
     const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1)
     const cutoff = sixMonthsAgo.getFullYear() + '-' + String(sixMonthsAgo.getMonth() + 1).padStart(2, '0') + '-01'
     const monthStart = new Date(); monthStart.setDate(1)
-    const monthCutoff = monthStart.toISOString().slice(0, 10)
+    const monthCutoff = localDate(monthStart)
     const [nb, pt, ap, due, inv, bk, stock, claims, calls, monthInv] = await Promise.all([
       sb.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'new'),
       sb.from('patients').select('id', { count: 'exact', head: true }),
@@ -38,14 +39,15 @@ export default function Dashboard() {
         .order('appointment_time'),
       sb.from('recall_reminders').select('id', { count: 'exact', head: true })
         .lte('recall_due_date', today()).eq('reminder_sent', false),
-      sb.from('invoices').select('amount, invoice_date').eq('payment_status', 'paid').gte('invoice_date', cutoff),
+      fetchAll(() => sb.from('invoices').select('*').gte('invoice_date', cutoff).order('id')).then(data => ({ data })).catch(error => ({ error })),
       sb.from('bookings').select('lead_source'),
       sb.from('inventory').select('item_name, current_stock, reorder_threshold, unit').not('reorder_threshold', 'is', null),
       sb.from('insurance_claims').select('id, insurer_name, patients(full_name)').is('deleted_at', null).in('status', ['submitted', 'under_review']),
       sb.from('treatment_records').select('id, patient_id, follow_up_date, treatments(name), patients(full_name,phone)')
         .eq('follow_up_required', true).lte('follow_up_date', today()).is('deleted_at', null).order('follow_up_date'),
-      sb.from('invoices').select('amount, doctor_id, staff(full_name)').eq('payment_status', 'paid').gte('invoice_date', monthCutoff),
+      fetchAll(() => sb.from('invoices').select('*, staff(full_name)').gte('invoice_date', monthCutoff).order('id')).then(data => ({ data })).catch(error => ({ error })),
     ])
+    if (monthInv.error) toast('Doctor totals error: ' + monthInv.error.message)
     if (inv.error) toast('Revenue chart error: ' + inv.error.message)
     if (bk.error) toast('Lead source chart error: ' + bk.error.message)
     setStats({ nb: nb.count ?? 0, pt: pt.count ?? 0, due: due.count ?? 0 })
@@ -58,7 +60,7 @@ export default function Dashboard() {
     ;(monthInv.data ?? []).forEach(v => {
       const key = v.doctor_id || 'unattributed'
       perDoctor[key] ||= { name: v.staff?.full_name || 'Not attributed', amount: 0, count: 0 }
-      perDoctor[key].amount += Number(v.amount); perDoctor[key].count++
+      perDoctor[key].amount += received(v); perDoctor[key].count++
     })
     setByDoctor(Object.values(perDoctor).sort((a, b) => b.amount - a.amount))
 
@@ -72,7 +74,7 @@ export default function Dashboard() {
     ;(inv.data ?? []).forEach(v => {
       const key = v.invoice_date.slice(0, 7)
       const m = months.find(x => x.key === key)
-      if (m) m.amount += Number(v.amount)
+      if (m) m.amount += received(v)
     })
     setRevenue(months)
 
@@ -98,7 +100,7 @@ export default function Dashboard() {
   }
 
   async function markCalled(id) {
-    await sb.from('treatment_records').update({ follow_up_required: false }).eq('id', id)
+    await sb.rpc('mark_followup_called', { p_id: id })
     setFollowUps(f => f.filter(x => x.id !== id))
   }
 
@@ -130,7 +132,7 @@ export default function Dashboard() {
                         {f.patients?.full_name}{f.treatments?.name ? ' — ' + f.treatments.name : ''} ({fmtD(f.follow_up_date)})
                       </span>
                       <span style={{ whiteSpace: 'nowrap' }}>
-                        <a className="btn sm ghost" href={'tel:' + digits(f.patients?.phone)}>Call</a>{' '}
+                        {f.patients?.phone && <a className="btn sm ghost" href={'tel:' + digits(f.patients?.phone)}>Call</a>}{' '}
                         <button className="btn sm ghost" onClick={() => markCalled(f.id)}>Called</button>
                       </span>
                     </div>
@@ -167,7 +169,7 @@ export default function Dashboard() {
 
       <div className="chart-grid">
         <div className="chart-card">
-          <h2 style={{ fontSize: '.85rem', fontWeight: 500, marginBottom: '.75rem' }}>Revenue — last 6 months</h2>
+          <h2 style={{ fontSize: '.85rem', fontWeight: 500, marginBottom: '.75rem' }}>Net received against invoices — last 6 invoice months</h2>
           <RevenueChart data={revenue} />
         </div>
         <div className="chart-card">
@@ -175,8 +177,8 @@ export default function Dashboard() {
           <LeadSourceChart data={leadSources} />
         </div>
         <div className="chart-card chart-card-wide">
-          <h2 style={{ fontSize: '.85rem', fontWeight: 500, marginBottom: '.75rem' }}>Revenue by doctor — this month</h2>
-          {!byDoctor.length ? <p style={{ fontSize: '.78rem', color: 'var(--soft)' }}>No paid invoices yet this month.</p> : (
+          <h2 style={{ fontSize: '.85rem', fontWeight: 500, marginBottom: '.75rem' }}>Net received by doctor — invoices dated this month</h2>
+          {!byDoctor.length ? <p style={{ fontSize: '.78rem', color: 'var(--soft)' }}>No invoices dated this month.</p> : (
             <table className="tbl" style={{ boxShadow: 'none' }}>
               <thead><tr><th>Doctor</th><th>Invoices</th><th>Collected</th></tr></thead>
               <tbody>{byDoctor.map((d, i) => (

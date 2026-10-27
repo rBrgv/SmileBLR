@@ -15,7 +15,7 @@ const sections = [
   { label: 'Admin', links: [
     ['/treatments', 'Treatments'], ['/inventory', 'Inventory'], ['/staff', 'Staff'], ['/compliance', 'Compliance Logs'],
     ['/activity-log', 'Activity Log'], ['/data-export', 'Data Export'], ['/patient-import', 'Patient Import'],
-    ['/campaigns', 'Campaigns'], ['/clinic-settings', 'Clinic Settings'], ['/trash', 'Trash'],
+    ['/campaigns', 'Campaigns'], ['/trash', 'Trash'],
   ] },
 ]
 

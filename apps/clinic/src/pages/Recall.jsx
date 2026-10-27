@@ -43,7 +43,7 @@ export default function Recall() {
                 <td>{fmtD(r.last_visit_date)}</td>
                 <td className={due ? 'low' : ''}>{fmtD(r.recall_due_date)}{due && ' · DUE'}</td>
                 <td>{r.reminder_sent ? '✓ ' + fmtD(r.reminder_sent_date) : '—'}</td>
-                <td>{!r.reminder_sent && (
+                <td>{!r.reminder_sent && r.patients?.phone && (
                   <a className="btn sm green" target="_blank" rel="noreferrer"
                     href={`https://wa.me/${digits(r.patients?.phone)}?text=${msg}`}
                     onClick={() => markSent(r.id)}>Send WA</a>

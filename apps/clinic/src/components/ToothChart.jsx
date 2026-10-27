@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { DENTITIONS, isChildTooth, defaultDentition } from '../lib/teeth'
+import { DENTITIONS, isChildTooth, defaultDentition, isValidTooth } from '../lib/teeth'
 
 const CONDS = ['Decayed', 'Filled', 'Missing', 'Crowned', 'RootCanal', 'Implant', 'Healthy']
 
 export { CONDS as TOOTH_CONDITIONS }
 
-export default function ToothChart({ teeth, dateOfBirth, onSelect }) {
+export default function ToothChart({ teeth, dateOfBirth, onSelect, readOnly = false }) {
   const [view, setView] = useState(() => defaultDentition(dateOfBirth))
   const map = {}
   teeth.forEach(t => { map[t.tooth_number] = t })
@@ -19,7 +19,7 @@ export default function ToothChart({ teeth, dateOfBirth, onSelect }) {
       {nums.map(n => {
         const t = map[n]
         return (
-          <button key={n}
+          <button disabled={readOnly} key={n}
             className={`tooth ${t?.condition ? 't-' + t.condition : ''}`}
             title={t ? `${t.condition}${t.notes ? ' · ' + t.notes : ''}` : ''}
             onClick={() => onSelect(n, t)}>{n}</button>
@@ -30,6 +30,7 @@ export default function ToothChart({ teeth, dateOfBirth, onSelect }) {
 
   return (
     <>
+      {teeth.some(t => !isValidTooth(t.tooth_number)) && <div className="allergy-alert"><p>Legacy tooth numbers need clinician review. No automatic renumbering has been applied.</p>{teeth.filter(t => !isValidTooth(t.tooth_number)).map(t => <p key={t.id}>Recorded number {t.tooth_number} · {t.condition} · {t.notes} {!readOnly && <button className="btn sm ghost" onClick={() => onSelect(t.tooth_number,t)}>Correct numbering</button>}</p>)}</div>}
       <div style={{ display: 'flex', gap: '.4rem', marginBottom: '.75rem' }}>
         {Object.entries(DENTITIONS).map(([k, v]) => (
           <button key={k} className={'btn sm' + (view === k ? '' : ' ghost')} onClick={() => setView(k)}>
@@ -47,7 +48,7 @@ export default function ToothChart({ teeth, dateOfBirth, onSelect }) {
         <div className="jaw-label"><span>Lower right</span><span>Lower left</span></div>
       </div>
       <p style={{ fontSize: '.68rem', color: 'var(--soft)' }}>
-        FDI numbering — {view === 'adult' ? 'permanent teeth 11–48' : 'milk teeth 51–85'}. Click a tooth to set its condition.
+        FDI numbering — {view === 'adult' ? 'permanent teeth 11–48' : 'milk teeth 51–85'}. {readOnly ? 'Clinical chart is read-only for your role.' : 'Click a tooth to set its condition.'}
       </p>
     </>
   )

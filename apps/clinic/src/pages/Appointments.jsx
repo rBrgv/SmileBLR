@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtT, today } from '../lib/format'
@@ -8,6 +8,8 @@ import StatusSelect from '../components/StatusSelect'
 import VoiceNote from '../components/VoiceNote'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CancelReasonDialog from '../components/CancelReasonDialog'
+
+import { appointmentTimes, localDate, fetchAll } from '../lib/handoff'
 
 export const APPT_STATUSES = ['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show']
 
@@ -22,20 +24,22 @@ export async function completeAppointment(patientId) {
   })
 }
 
-export function AppointmentForm({ patientId, defaultDate, onDone, onClose }) {
+export function AppointmentForm({ patientId, defaultDate, appointment, onDone, onClose }) {
   const [patients, setPatients] = useState([])
   const [doctors, setDoctors] = useState([])
   const [treatments, setTreatments] = useState([])
-  const [f, setF] = useState({ patient_id: patientId || '', date: defaultDate || today(), time: '10:00', doctor_id: '', treatment_id: '', floor_room: '', duration: 30, notes: '', repeat: false, repeatFreq: 'weekly', repeatCount: 4 })
+  const [f, setF] = useState({ patient_id: appointment?.patient_id || patientId || '', date: appointment ? localDate(new Date(appointment.appointment_time)) : defaultDate || today(), time: appointment ? new Date(appointment.appointment_time).toTimeString().slice(0, 5) : '10:00', doctor_id: appointment?.doctor_id || '', treatment_id: appointment?.treatment_id || '', floor_room: appointment?.floor_room || '', duration: appointment?.duration_minutes || 30, notes: appointment?.notes || '', repeat: false, repeatFreq: 'weekly', repeatCount: 4 })
+  const lock = useRef(false)
+  const [busy, setBusy] = useState(false)
   const [conflict, setConflict] = useState(null)
   const [allergies, setAllergies] = useState(null)
   const toast = useToast()
 
   useEffect(() => {
-    sb.from('patients').select('id,full_name,phone').order('full_name').then(({ data }) => {
+    fetchAll(() => sb.from('patients').select('id,full_name,phone').is('merged_into', null).order('full_name').order('id')).then(data => {
       setPatients(data ?? [])
-      if (!patientId && data?.length) setF(x => ({ ...x, patient_id: data[0].id }))
-    })
+      if (!patientId && !appointment && data?.length) setF(x => ({ ...x, patient_id: data[0].id }))
+    }).catch(e => toast(e.message))
     sb.from('staff').select('*').eq('active', true).eq('role', 'doctor').order('full_name').then(({ data }) => setDoctors(data ?? []))
     sb.from('treatments').select('*').order('name').then(({ data }) => setTreatments(data ?? []))
   }, [])
@@ -46,84 +50,57 @@ export function AppointmentForm({ patientId, defaultDate, onDone, onClose }) {
       .then(({ data }) => setAllergies(data?.[0]?.allergies || null))
   }, [f.patient_id])
 
+  function times() { return appointmentTimes(f.date, f.time, f.repeat && !appointment ? f.repeatFreq : 'weekly', f.repeat && !appointment ? Number(f.repeatCount) : 1) }
   async function doInsert() {
-    const base = {
-      patient_id: f.patient_id, doctor_id: f.doctor_id || null, treatment_id: f.treatment_id || null,
-      floor_room: f.floor_room.trim() || null, duration_minutes: parseInt(f.duration) || 30, notes: f.notes.trim() || null,
-    }
-    if (f.repeat && parseInt(f.repeatCount) > 1) {
-      const groupId = crypto.randomUUID()
-      const stepDays = { weekly: 7, biweekly: 14 }[f.repeatFreq]
-      const rows = Array.from({ length: parseInt(f.repeatCount) }, (_, i) => {
-        const d = new Date(f.date + 'T00:00:00')
-        if (f.repeatFreq === 'monthly') d.setMonth(d.getMonth() + i)
-        else d.setDate(d.getDate() + i * stepDays)
-        const dateStr = d.toISOString().slice(0, 10)
-        return { ...base, appointment_time: new Date(dateStr + 'T' + f.time + ':00').toISOString(), recurrence_group_id: groupId }
-      })
-      const { error } = await sb.from('appointments').insert(rows)
-      if (error) return toast('Error: ' + error.message)
-      toast(`${rows.length} appointments created (only the first was checked for conflicts)`); onDone()
-      return
-    }
-    const { error } = await sb.from('appointments').insert({ ...base, appointment_time: new Date(f.date + 'T' + f.time + ':00').toISOString() })
-    if (error) return toast('Error: ' + error.message)
-    toast('Appointment created'); onDone()
+    if (lock.current) return
+    lock.current = true; setBusy(true)
+    try {
+      const base = { patient_id: f.patient_id, doctor_id: f.doctor_id || null, treatment_id: f.treatment_id || null, floor_room: f.floor_room.trim() || null, duration_minutes: Number(f.duration), notes: f.notes.trim() || null }
+      const dates = times()
+      const group = dates.length > 1 ? crypto.randomUUID() : null
+      const query = appointment
+        ? sb.from('appointments').update({ ...base, appointment_time: dates[0] }).eq('id', appointment.id).eq('updated_at', appointment.updated_at).select('id')
+        : sb.from('appointments').insert(dates.map(appointment_time => ({ ...base, appointment_time, recurrence_group_id: group }))).select('id')
+      const { data, error } = await query
+      if (error) throw error
+      if (!data?.length) throw new Error('Appointment changed by another staff member. Reload and try again.')
+      toast(appointment ? 'Appointment updated' : `${dates.length} appointment(s) created`); onDone()
+    } catch (e) { toast('Error: ' + e.message) }
+    finally { lock.current = false; setBusy(false) }
   }
-
   async function save() {
-    if (!f.patient_id) return toast('Pick a patient.')
-    if (f.doctor_id) {
-      const doctorName = doctors.find(d => d.id === f.doctor_id)?.full_name || 'This doctor'
-      const { data: onLeave } = await sb.from('staff_leave').select('reason').eq('staff_id', f.doctor_id).eq('leave_date', f.date).maybeSingle()
-      if (onLeave) {
-        setConflict(`${doctorName} is on leave that day${onLeave.reason ? ' (' + onLeave.reason + ')' : ''}. Book this anyway?`)
-        return
+    if (lock.current) return
+    if (!f.patient_id || !Number.isInteger(Number(f.duration)) || Number(f.duration) <= 0) return toast('Choose a patient and a positive whole-minute duration.')
+    lock.current = true; setBusy(true)
+    try {
+      const warnings = []
+      for (const timestamp of times()) {
+        const start = new Date(timestamp), end = new Date(start.getTime() + Number(f.duration) * 60000)
+        const date = localDate(start)
+        if (f.doctor_id) {
+          const { data, error } = await sb.from('staff_leave').select('reason').eq('staff_id', f.doctor_id).eq('leave_date', date)
+          if (error) throw error
+          if (data?.length) warnings.push(`${date}: doctor is on leave.`)
+        }
+        // Fetch all earlier starts, including appointments spanning midnight.
+        const existing = await fetchAll(() => sb.from('appointments').select('id, doctor_id, floor_room, appointment_time, duration_minutes').lt('appointment_time', end.toISOString()).not('status', 'in', '("cancelled","no_show")').order('id'))
+        for (const a of existing) {
+          if (a.id === appointment?.id) continue
+          if (new Date(a.appointment_time).getTime() + (a.duration_minutes || 30) * 60000 <= start.getTime()) continue
+          if ((f.doctor_id && a.doctor_id === f.doctor_id) || (f.floor_room.trim() && a.floor_room?.trim().toLowerCase() === f.floor_room.trim().toLowerCase())) warnings.push(`${date}: doctor or room already booked.`)
+        }
       }
-      const start = new Date(f.date + 'T' + f.time + ':00')
-      const end = new Date(start.getTime() + (parseInt(f.duration) || 30) * 60000)
-      const dayStart = new Date(f.date + 'T00:00:00'), dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
-      const { data: existing } = await sb.from('appointments')
-        .select('appointment_time, duration_minutes, patients(full_name)')
-        .eq('doctor_id', f.doctor_id)
-        .gte('appointment_time', dayStart.toISOString()).lt('appointment_time', dayEnd.toISOString())
-        .not('status', 'in', '("cancelled","no_show")')
-      const clash = (existing ?? []).find(a => {
-        const aStart = new Date(a.appointment_time)
-        const aEnd = new Date(aStart.getTime() + (a.duration_minutes || 30) * 60000)
-        return start < aEnd && end > aStart
-      })
-      if (clash) {
-        setConflict(`${doctorName} already has ${clash.patients?.full_name || 'another patient'} booked at ${fmtT(clash.appointment_time)}. Book this anyway?`)
-        return
-      }
-    }
-    if (f.floor_room.trim()) {
-      const start = new Date(f.date + 'T' + f.time + ':00')
-      const end = new Date(start.getTime() + (parseInt(f.duration) || 30) * 60000)
-      const dayStart = new Date(f.date + 'T00:00:00'), dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
-      const { data: inRoom } = await sb.from('appointments')
-        .select('appointment_time, duration_minutes, floor_room, patients(full_name)')
-        .ilike('floor_room', f.floor_room.trim())
-        .gte('appointment_time', dayStart.toISOString()).lt('appointment_time', dayEnd.toISOString())
-        .not('status', 'in', '("cancelled","no_show")')
-      const roomClash = (inRoom ?? []).find(a => {
-        const aStart = new Date(a.appointment_time)
-        const aEnd = new Date(aStart.getTime() + (a.duration_minutes || 30) * 60000)
-        return start < aEnd && end > aStart
-      })
-      if (roomClash) {
-        setConflict(`${f.floor_room} is already booked for ${roomClash.patients?.full_name || 'another patient'} at ${fmtT(roomClash.appointment_time)}. Book this anyway?`)
-        return
-      }
-    }
-    doInsert()
+      if (warnings.length) { setConflict([...new Set(warnings)].join(' ') + ' Book anyway?'); return }
+      lock.current = false
+      await doInsert()
+    } catch (e) { toast('Could not check schedule: ' + e.message) }
+    finally { lock.current = false; setBusy(false) }
   }
 
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
   return (
     <>
-    <Modal title="New appointment" onClose={onClose}>
+    <Modal title={appointment ? "Edit / reschedule appointment" : "New appointment"} onClose={onClose}>
       <label>Patient *</label>
       <select value={f.patient_id} onChange={set('patient_id')}>
         {patients.map(p => <option key={p.id} value={p.id}>{p.full_name} · {p.phone}</option>)}
@@ -148,7 +125,7 @@ export function AppointmentForm({ patientId, defaultDate, onDone, onClose }) {
         <div><label>Duration (min)</label><input type="number" value={f.duration} onChange={set('duration')} /></div>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', textTransform: 'none', fontSize: '.78rem', color: 'var(--ink)' }}>
-        <input type="checkbox" style={{ width: 'auto' }} checked={f.repeat} onChange={e => setF(x => ({ ...x, repeat: e.target.checked }))} /> Repeat this appointment
+        <input type="checkbox" style={{ width: 'auto' }} disabled={!!appointment} checked={f.repeat} onChange={e => setF(x => ({ ...x, repeat: e.target.checked }))} /> Repeat this appointment
       </label>
       {f.repeat && (
         <div className="mrow">
@@ -160,7 +137,7 @@ export function AppointmentForm({ patientId, defaultDate, onDone, onClose }) {
       )}
       <label>Notes</label>
       <VoiceNote value={f.notes} onChange={v => setF(x => ({ ...x, notes: v }))} rows={2} />
-      <button className="btn" onClick={save}>Save appointment</button>
+      <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save appointment"}</button>
     </Modal>
     {conflict && <ConfirmDialog title="Scheduling conflict" body={conflict} confirmLabel="Book anyway"
       onCancel={() => setConflict(null)} onConfirm={() => { setConflict(null); doInsert() }} />}
@@ -182,6 +159,7 @@ export default function Appointments() {
   const [doctors, setDoctors] = useState([])
   const [doctorFilter, setDoctorFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [reasonPrompt, setReasonPrompt] = useState(null) // {a, status}
   const toast = useToast()
   const nav = useNavigate()
@@ -265,6 +243,7 @@ export default function Appointments() {
               <td>{a.treatments?.name || '—'}</td>
               <td>{a.floor_room || '—'}</td>
               <td>
+                <button className="btn sm ghost" onClick={() => setEditing(a)}>Edit / reschedule</button>
                 <StatusSelect value={a.status} options={APPT_STATUSES} onChange={s => onStatusChange(a, s)} />
                 {a.status_reason && <div style={{ fontSize: '.66rem', color: 'var(--soft)', marginTop: '.2rem' }}>{a.status_reason}</div>}
                 {a.recurrence_group_id && <button className="btn sm ghost" style={{ marginTop: '.3rem' }} onClick={() => cancelSeries(a.recurrence_group_id)}>Cancel remaining series</button>}
@@ -273,6 +252,7 @@ export default function Appointments() {
           ))}</tbody>
         </table>
       )}
+      {editing && <AppointmentForm appointment={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load() }} />}
       {showForm && <AppointmentForm defaultDate={date} onClose={() => setShowForm(false)} onDone={() => { setShowForm(false); load() }} />}
       {reasonPrompt && (
         <CancelReasonDialog status={reasonPrompt.status} onCancel={() => setReasonPrompt(null)}
@@ -293,7 +273,7 @@ function WeekGrid({ rows, weekFrom, onPickDay, doctorFilter }) {
   const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
   const byDay = {}
   rows.filter(a => !doctorFilter || a.doctor_id === doctorFilter).forEach(a => {
-    const k = a.appointment_time.slice(0, 10)
+    const k = localDate(new Date(a.appointment_time))
     ;(byDay[k] ||= []).push(a)
   })
   const isToday = d => iso(d) === today()

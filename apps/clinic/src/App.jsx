@@ -57,7 +57,7 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <RoleProvider userId={session.user.id}>
+      <RoleProvider key={session.user.id} userId={session.user.id}>
         <Routes>
           <Route path="/print/invoice/:id" element={<PrintInvoice />} />
           <Route path="/print/prescription/:id" element={<PrintPrescription />} />

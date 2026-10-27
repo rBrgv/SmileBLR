@@ -57,7 +57,7 @@ export default function Waitlist() {
                 <td>{r.notes || '—'}</td>
                 <td>{fmtD(r.added_date)}</td>
                 <td>
-                  <a className="btn sm green" target="_blank" rel="noreferrer" href={`https://wa.me/${digits(r.patients?.phone)}?text=${msg}`}>WhatsApp</a>{' '}
+                  {r.patients?.phone && <a className="btn sm green" target="_blank" rel="noreferrer" href={`https://wa.me/${digits(r.patients?.phone)}?text=${msg}`}>WhatsApp</a>}{' '}
                   <button className="btn sm ghost" onClick={() => setBookFor(r)}>Book now</button>{' '}
                   <button className="btn sm ghost danger" onClick={() => remove(r.id)}>Remove</button>
                 </td>

@@ -1,3 +1,4 @@
+import { medicinesFor } from '../lib/clinical'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -22,8 +23,7 @@ export default function PrintPrescription() {
       {rx.patients?.date_of_birth && <div className="print-row"><b>Date of birth</b><span>{fmtD(rx.patients.date_of_birth)}</span></div>}
       <div className="print-block">
         <h4>℞</h4>
-        <p><b>{rx.medicine_name}</b></p>
-        <p>{rx.dosage || '—'} · {rx.duration || '—'}</p>
+        <table className="tbl"><thead><tr><th>Medicine / strength</th><th>Dose</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead><tbody>{medicinesFor(rx).map((m,i)=><tr key={i}><td>{m.name} {m.strength}</td><td>{m.dose}</td><td>{m.frequency || '—'}</td><td>{m.duration}</td><td>{m.instructions || '—'}</td></tr>)}</tbody></table>
         {rx.notes && <p>{rx.notes}</p>}
       </div>
       <div className="print-signature">

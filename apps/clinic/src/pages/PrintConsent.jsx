@@ -21,14 +21,13 @@ export default function PrintConsent() {
       <div className="print-row"><b>Procedure</b><span>{form.procedure}</span></div>
       <div className="print-block">
         <h4>Consent statement</h4>
-        <p>
-          I, the undersigned, confirm that the procedure named above, its risks, benefits, and alternatives
-          have been explained to me in a language I understand, and I voluntarily consent to proceed.
-        </p>
+        <p style={{ whiteSpace: 'pre-wrap' }}>{form.statement || 'Legacy consent record: procedure-specific wording was not retained. Refer to the original signed document.'}</p>
       </div>
       {form.consent_given ? (
         <>
           <div className="print-row"><b>Signed</b><span>{fmtD(form.signed_date)}</span></div>
+          <div className="print-row"><b>Signer</b><span>{form.signer_name || 'Not recorded'}{form.signer_kind === 'guardian' ? ` (guardian — ${form.guardian_relationship})` : ''}</span></div>
+          {!form.signature_data && <p>{form.document_url ? 'Evidence: signed document retained at the recorded document link.' : 'Legacy record: signature evidence was not recorded.'}</p>}
           {form.signature_data && (
             <div className="print-signature">
               <div><img src={form.signature_data} alt="Patient signature" />Patient signature</div>

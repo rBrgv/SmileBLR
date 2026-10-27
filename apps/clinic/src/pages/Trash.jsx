@@ -73,7 +73,7 @@ export default function Trash() {
               <td className={r.patients?.id ? 'link' : ''} onClick={() => r.patients?.id && nav('/patients/' + r.patients.id)}>{cfg.title(r)}</td>
               <td>{fmtDT(r.deleted_at)}</td>
               <td>
-                <button className="btn sm ghost" onClick={() => restore(r)}>Restore</button>{' '}
+                <button className="btn sm ghost" disabled={!canPurge && ['treatment_plans', 'treatment_records', 'consent_forms'].includes(type)} onClick={() => restore(r)}>Restore</button>{' '}
                 {canPurge && <button className="btn sm ghost danger" onClick={() => setPurgeTarget(r)}>Delete permanently</button>}
               </td>
             </tr>

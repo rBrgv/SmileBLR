@@ -1,3 +1,5 @@
+import { canWriteClinical } from '../lib/clinical'
+import ClinicalButton from '../components/ClinicalButton'
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
@@ -11,9 +13,10 @@ import SignaturePad from '../components/SignaturePad'
 import { logActivity } from '../lib/activityLog'
 
 export const PLAN_STATUSES = ['proposed', 'accepted', 'in_progress', 'completed', 'cancelled']
-const STAGE_STATUSES = ['pending', 'scheduled', 'completed']
+const STAGE_STATUSES = ['pending', 'scheduled', 'in_progress', 'completed']
 
 export default function TreatmentPlans() {
+  const role = useRole()
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
   const [st, setSt] = useState('')
@@ -55,7 +58,7 @@ export default function TreatmentPlans() {
         <h2>Treatment plans</h2>
         <div>
           <button className="btn ghost" onClick={() => setShowTemplates(true)}>Manage templates</button>{' '}
-          <button className="btn" onClick={() => setShowForm(true)}>+ New plan</button>
+          <ClinicalButton className="btn" onClick={() => setShowForm(true)}>+ New plan</ClinicalButton>
         </div>
       </div>
       <div className="bar">
@@ -77,11 +80,11 @@ export default function TreatmentPlans() {
                 <td>{p.plan_description || '—'}</td>
                 <td>{inr(p.total_estimated_cost)}</td>
                 <td>{done}/{stages.length}</td>
-                <td><StatusSelect value={p.status} options={PLAN_STATUSES} onChange={s => setStatus(p.id, s)} /></td>
+                <td><StatusSelect disabled={!canWriteClinical(role)} value={p.status} options={PLAN_STATUSES} onChange={s => setStatus(p.id, s)} /></td>
                 <td>
                   <button className="btn sm ghost" onClick={() => setDetail(p.id)}>Open</button>{' '}
                   <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/plan/' + p.id}>Print</a>{' '}
-                  <button className="btn sm ghost danger" onClick={() => setConfirmDel(p.id)}>Delete</button>
+                  <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(p.id)}>Delete</ClinicalButton>
                 </td>
               </tr>
             )
@@ -159,7 +162,7 @@ function PlanForm({ onClose, onDone }) {
       )}
       <label>Description</label><textarea rows={2} value={f.plan_description} onChange={set('plan_description')} />
       <label>Estimated total cost (INR)</label><input type="number" value={f.total_estimated_cost} onChange={set('total_estimated_cost')} />
-      <button className="btn" onClick={save}>Save plan</button>
+      <ClinicalButton className="btn" onClick={save}>Save plan</ClinicalButton>
     </Modal>
   )
 }
@@ -188,7 +191,7 @@ function TemplatesManager({ onClose }) {
       <p style={{ fontSize: '.78rem', color: 'var(--mid)', marginBottom: '.75rem' }}>
         Reusable stage presets for common multi-stage procedures — pick one when creating a new plan.
       </p>
-      <button className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowNew(true)}>+ New template</button>
+      <ClinicalButton className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowNew(true)}>+ New template</ClinicalButton>
       {templates === null ? <p style={{ fontSize: '.78rem' }}>Loading…</p> : !templates.length ? (
         <div className="empty">No templates yet.</div>
       ) : (
@@ -200,7 +203,7 @@ function TemplatesManager({ onClose }) {
               <td>{(t.plan_template_stages || []).length}</td>
               <td>
                 <button className="btn sm ghost" onClick={() => setDetail(t.id)}>Edit stages</button>{' '}
-                <button className="btn sm ghost danger" onClick={() => removeTemplate(t.id)}>Delete</button>
+                <ClinicalButton className="btn sm ghost danger" onClick={() => removeTemplate(t.id)}>Delete</ClinicalButton>
               </td>
             </tr>
           ))}</tbody>
@@ -225,7 +228,7 @@ function NewTemplateForm({ onClose, onDone }) {
     <Modal title="New template" onClose={onClose}>
       <label>Name *</label><input placeholder="Full mouth implants" value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} />
       <label>Description</label><input value={f.description} onChange={e => setF(x => ({ ...x, description: e.target.value }))} />
-      <button className="btn" onClick={save}>Save template</button>
+      <ClinicalButton className="btn" onClick={save}>Save template</ClinicalButton>
     </Modal>
   )
 }
@@ -252,14 +255,14 @@ function TemplateDetail({ id, onClose, onChanged }) {
   if (!template || !stages) return null
   return (
     <Modal title={'Template — ' + template.name} onClose={onClose}>
-      <button className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowStage(true)}>+ Add stage</button>
+      <ClinicalButton className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowStage(true)}>+ Add stage</ClinicalButton>
       {!stages.length ? <div className="empty">No stages yet.</div> : (
         <table className="tbl">
           <thead><tr><th>#</th><th>Description</th><th>Est. cost</th><th></th></tr></thead>
           <tbody>{stages.map(s => (
             <tr key={s.id}>
               <td>{s.stage_number}</td><td>{s.description || '—'}</td><td>{inr(s.estimated_cost)}</td>
-              <td><button className="btn sm ghost danger" onClick={() => removeStage(s.id)}>Delete</button></td>
+              <td><ClinicalButton className="btn sm ghost danger" onClick={() => removeStage(s.id)}>Delete</ClinicalButton></td>
             </tr>
           ))}</tbody>
         </table>
@@ -289,7 +292,7 @@ function TemplateStageForm({ templateId, nextNum, onClose, onDone }) {
       <label>Stage number</label><input type="number" value={f.stage_number} onChange={set('stage_number')} />
       <label>Description</label><input value={f.description} onChange={set('description')} />
       <label>Estimated cost</label><input type="number" value={f.estimated_cost} onChange={set('estimated_cost')} />
-      <button className="btn" onClick={save}>Save stage</button>
+      <ClinicalButton className="btn" onClick={save}>Save stage</ClinicalButton>
     </Modal>
   )
 }
@@ -361,9 +364,9 @@ function PlanDetail({ id, onClose, onChanged }) {
           <span className="badge b-completed">approved</span> by patient on {fmtD(plan.approved_date)}
         </p>
       ) : (
-        <button className="btn sm ghost" style={{ marginBottom: '1rem' }} onClick={() => setShowApproval(true)}>Get patient approval</button>
+        <ClinicalButton className="btn sm ghost" style={{ marginBottom: '1rem' }} onClick={() => setShowApproval(true)}>Get patient approval</ClinicalButton>
       )}
-      <button className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowStage(true)}>+ Add stage</button>
+      <ClinicalButton className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowStage(true)}>+ Add stage</ClinicalButton>
       {!stages.length ? <div className="empty">No stages yet.</div> : (
         <table className="tbl">
           <thead><tr><th>#</th><th>Description</th><th>Cost</th><th>Appointment</th><th>Status</th><th></th></tr></thead>
@@ -371,17 +374,17 @@ function PlanDetail({ id, onClose, onChanged }) {
             <tr key={s.id}>
               <td>{s.stage_number}</td><td>{s.description || '—'}</td><td>{inr(s.estimated_cost)}</td>
               <td>
-                <select value={s.appointment_id || ''} onChange={e => linkAppt(s, e.target.value)}>
+                <select disabled={!canWriteClinical(role)} value={s.appointment_id || ''} onChange={e => linkAppt(s, e.target.value)}>
                   <option value="">—</option>
                   {appts.map(a => <option key={a.id} value={a.id}>{fmtD(a.appointment_time)}</option>)}
                 </select>
               </td>
-              <td><StatusSelect value={s.status} options={STAGE_STATUSES} onChange={st => setStageStatus(s, st)} /></td>
+              <td><StatusSelect disabled={!canWriteClinical(role)} value={s.status} options={STAGE_STATUSES} onChange={st => setStageStatus(s, st)} /></td>
               <td>
                 {loggedByStage[s.id]
                   ? <span className="badge b-completed">logged</span>
-                  : <button className="btn sm ghost" onClick={() => setLogStage(s)}>Log treatment</button>}{' '}
-                {canDeleteStage && <button className="btn sm ghost danger" onClick={() => setConfirmDel(s)}>Delete</button>}
+                  : <ClinicalButton className="btn sm ghost" onClick={() => setLogStage(s)}>Log treatment</ClinicalButton>}{' '}
+                {canDeleteStage && <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(s)}>Delete</ClinicalButton>}
               </td>
             </tr>
           ))}</tbody>
@@ -421,7 +424,7 @@ function StageForm({ planId, nextNum, onClose, onDone }) {
       <label>Stage number</label><input type="number" value={f.stage_number} onChange={set('stage_number')} />
       <label>Description</label><input value={f.description} onChange={set('description')} />
       <label>Estimated cost</label><input type="number" value={f.estimated_cost} onChange={set('estimated_cost')} />
-      <button className="btn" onClick={save}>Save stage</button>
+      <ClinicalButton className="btn" onClick={save}>Save stage</ClinicalButton>
     </Modal>
   )
 }
