@@ -39,7 +39,7 @@ CREATE TABLE campaign_sends (
   status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
   error TEXT
 );
-CREATE INDEX campaign_sends_dedupe ON campaign_sends (campaign_id, patient_id, (sent_at::date));
+CREATE INDEX campaign_sends_dedupe ON campaign_sends (campaign_id, patient_id, sent_at);
 
 -- ── RLS: admin-only, same pattern as staff/activity_log ──
 ALTER TABLE clinic_settings ENABLE ROW LEVEL SECURITY;

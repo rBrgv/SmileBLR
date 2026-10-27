@@ -6,3 +6,7 @@ dist/
 .DS_Store
 .deploy-secrets/
 .sf/
+
+# Patient data exports — never commit
+data/import/
+scripts/data/
