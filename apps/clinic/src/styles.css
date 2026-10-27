@@ -57,6 +57,8 @@ font-size:.78rem;padding:.55rem 1.25rem;border-left:3px solid transparent;text-d
 .tbl th{background:var(--purple);color:#fff;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;font-weight:500;text-align:left;padding:.6rem .8rem}
 .tbl td{padding:.6rem .8rem;font-size:.78rem;border-top:1px solid var(--rule);vertical-align:top}
 .tbl tr:hover td{background:#faf8f4}
+.tbl th.sortable{cursor:pointer;user-select:none}
+.tbl th.sortable:hover{background:var(--purple-dark,#5a3d8a)}
 .link{color:var(--purple);cursor:pointer;text-decoration:underline;transition:color var(--ease)}
 .link:hover{color:var(--pink)}
 .badge{font-size:.56rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:.2rem .55rem;color:#fff;background:var(--soft);white-space:nowrap}
