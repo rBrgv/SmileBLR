@@ -1,9 +1,10 @@
+import PaymentEditor from '../components/PaymentEditor'
+import { received, balance, fetchAll } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
 import { useToast } from '../components/Toast'
-import StatusSelect from '../components/StatusSelect'
 
 export default function Invoices() {
   const [rows, setRows] = useState(null)
@@ -11,26 +12,22 @@ export default function Invoices() {
   const nav = useNavigate()
 
   async function load() {
-    const { data, error } = await sb.from('invoices').select('*, patients(full_name), staff(full_name)')
-      .order('invoice_date', { ascending: false }).limit(300)
-    if (error) return toast('Error: ' + error.message)
-    setRows(data)
+    try {
+      const data = await fetchAll(() => sb.from('invoices').select('*, patients(full_name), staff(full_name)').order('invoice_date', { ascending: false }).order('id'))
+      setRows(data)
+    } catch (e) { toast('Error: ' + e.message) }
   }
+
   useEffect(() => { load() }, [])
 
-  async function setStatus(id, status) {
-    const { error } = await sb.from('invoices').update({ payment_status: status }).eq('id', id)
-    if (error) return toast('Error: ' + error.message)
-    toast('Invoice ' + status); load()
-  }
-
   if (!rows) return <div className="empty">Loading…</div>
-  const pend = rows.filter(r => r.payment_status === 'pending' || r.payment_status === 'partial').reduce((a, r) => a + Number(r.amount), 0)
-  const paid = rows.filter(r => r.payment_status === 'paid').reduce((a, r) => a + Number(r.amount), 0)
+  const pend = rows.reduce((a, r) => a + balance(r), 0)
+  const paid = rows.reduce((a, r) => a + received(r), 0)
 
   return (
     <>
       <div className="pagehead"><h2>Invoices</h2></div>
+      {rows.some(v => v.payment_status === 'partial' && v.amount_paid == null) && <p className="allergy-alert">Reconcile legacy partial payments. Outstanding includes their full amounts until corrected.</p>}
       <div className="stats">
         <div className="stat green"><b>{inr(paid)}</b><span>Collected</span></div>
         <div className="stat pink"><b>{inr(pend)}</b><span>Outstanding</span></div>
@@ -48,7 +45,7 @@ export default function Invoices() {
               <td>{inr(v.amount)}{v.tax_amount ? <span style={{ color: 'var(--soft)' }}> +{inr(v.tax_amount)} tax</span> : ''}</td>
               <td>{v.payment_method || '—'}</td>
               <td>{v.staff?.full_name || '—'}</td>
-              <td><StatusSelect value={v.payment_status} options={['pending', 'partial', 'paid', 'refunded']} onChange={s => setStatus(v.id, s)} /></td>
+              <td><PaymentEditor invoice={v} onDone={load} /></td>
               <td><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a></td>
             </tr>
           ))}</tbody>

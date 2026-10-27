@@ -1,3 +1,5 @@
+import { lineTotals } from '../lib/clinical'
+import { received, balance } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -26,9 +28,12 @@ export default function PrintInvoice() {
       <div className="print-row"><b>Payment method</b><span>{inv.payment_method || '—'}</span></div>
       <div className="print-row"><b>Status</b><span>{inv.payment_status}</span></div>
       {inv.notes && <div className="print-block"><h4>Notes</h4><p>{inv.notes}</p></div>}
-      <div className="print-row"><b>Subtotal</b><span>{inr(inv.amount)}</span></div>
+      {inv.items && <table className="tbl"><thead><tr><th>Procedure / tooth</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Tax</th><th>Total</th></tr></thead><tbody>{inv.items.map((r,i)=><tr key={i}><td>{r.description}{r.tooth_number ? ` · Tooth ${r.tooth_number}` : ''}</td><td>{r.quantity}</td><td>{inr(r.unit_price)}</td><td>{inr(r.discount)}</td><td>{r.tax_rate}%</td><td>{inr(lineTotals(r).total)}</td></tr>)}</tbody></table>}
+      <div className="print-row"><b>Subtotal after discounts</b><span>{inr(inv.amount)}</span></div>
       {inv.tax_amount ? <div className="print-row"><b>Tax</b><span>{inr(inv.tax_amount)}</span></div> : null}
       <div className="print-amount">{inr(total)}</div>
+      <div className="print-row"><b>Net received</b><span>{inv.amount_paid == null && inv.payment_status === 'partial' ? 'Needs reconciliation' : inr(received(inv))}</span></div>
+      <div className="print-row"><b>Balance due</b><span>{inv.amount_paid == null && inv.payment_status === 'partial' ? 'Needs reconciliation' : inr(balance(inv))}</span></div>
       <div className="print-signature">
         <div>Authorized signature</div>
         <div>Patient signature</div>
