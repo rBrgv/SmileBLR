@@ -1,100 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { sb } from '../lib/supabase'
 import { useToast } from '../components/Toast'
 import { useRole } from '../lib/RoleContext'
 
-// Target layout for the upload CSV. Column order doesn't matter, headers do.
-const COLUMNS = [
-  'full_name', 'phone', 'email', 'date_of_birth', 'gender', 'address',
-  'emergency_contact_name', 'emergency_contact_phone', 'consent_given',
-  'consent_date', 'referral_source', 'tags', 'medical_conditions',
-  'allergies', 'current_medications', 'pregnancy_status',
-]
-
-// Accepts either our template's snake_case headers, or the raw
-// Click4Appointment export headers, and normalizes both to the same keys.
-const HEADER_ALIASES = {
-  'full name': 'full_name',
-  'phone number': 'phone',
-  'email': 'email',
-  'date of birth': 'date_of_birth',
-  'gender': 'gender',
-  'address': 'address',
-  'emergency contact name': 'emergency_contact_name',
-  'emergency contact phone': 'emergency_contact_phone',
-  'consent given': 'consent_given',
-  'consent date': 'consent_date',
-  'referral source': 'referral_source',
-  'tags / patient category': 'tags',
-  'medical history conditions (selected)': 'medical_conditions',
-  'allergies': 'allergies',
-  'current medications': 'current_medications',
-  'pregnancy status': 'pregnancy_status',
-}
-
-function normalizeHeader(h) {
-  const key = h.trim().toLowerCase()
-  return HEADER_ALIASES[key] || h.trim()
-}
-
-// Minimal RFC4180 parser — handles quoted fields, escaped quotes, commas/newlines inside quotes.
-function parseCSV(text) {
-  const rows = []
-  let row = [], field = '', inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else { inQuotes = false }
-      } else field += c
-    } else if (c === '"') inQuotes = true
-    else if (c === ',') { row.push(field); field = '' }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(field); field = ''
-      if (row.length > 1 || row[0] !== '') rows.push(row)
-      row = []
-    } else field += c
-  }
-  if (field !== '' || row.length) { row.push(field); rows.push(row) }
-  if (!rows.length) return []
-  const headers = rows[0].map(normalizeHeader)
-  return rows.slice(1).map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] ?? '').trim()])))
-}
-
-function parseDate(s) {
-  if (!s) return null
-  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/) // DD-MM-YYYY
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return null
-}
-
-function parseBool(s) {
-  const v = (s || '').trim().toLowerCase()
-  return v === 'yes' || v === 'true' || v === '1'
-}
-
-function buildPatientRow(r) {
-  return {
-    full_name: r.full_name || '',
-    phone: r.phone || 'N/A',
-    email: r.email || null,
-    date_of_birth: parseDate(r.date_of_birth),
-    gender: r.gender || null,
-    address: r.address || null,
-    emergency_contact_name: r.emergency_contact_name || null,
-    emergency_contact_phone: r.emergency_contact_phone || null,
-    consent_given: parseBool(r.consent_given),
-    consent_date: parseDate(r.consent_date),
-    referral_source: r.referral_source || null,
-    tags: r.tags ? r.tags.split('|').map(t => t.trim()).filter(Boolean) : [],
-  }
-}
-
-function hasMedicalData(r) {
-  return r.medical_conditions || r.allergies || r.current_medications || r.pregnancy_status
-}
+import { COLUMNS, parseCSV, parseBool, buildPatientRow, hasMedicalData } from '../lib/patientImport'
 
 export default function PatientImport() {
   const [rows, setRows] = useState([])
@@ -105,40 +14,41 @@ export default function PatientImport() {
   const role = useRole()
   const isAdmin = role === 'admin'
 
+  const lock = useRef(false)
   function onFile(e) {
     const file = e.target.files[0]
+    setRows([]); setResult(null)
     if (!file) return
     setFileName(file.name)
-    setResult(null)
     const reader = new FileReader()
-    reader.onload = () => setRows(parseCSV(reader.result))
+    reader.onload = () => { try { setRows(parseCSV(String(reader.result))) } catch (e) { toast(e.message) } }
+    reader.onerror = () => toast('Could not read CSV.')
     reader.readAsText(file)
   }
-
-  const skipped = rows.filter(r => !r.full_name?.trim())
-  const valid = rows.filter(r => r.full_name?.trim())
-
+  const valid = rows.filter(r => r.full_name?.trim() && (r.phone?.trim() || r.source_id?.trim()))
+  const skipped = rows.filter(r => !r.full_name?.trim() || (!r.phone?.trim() && !r.source_id?.trim()))
   async function runImport() {
-    setBusy(true)
-    let imported = 0
+    if (lock.current) return
+    lock.current = true; setBusy(true)
+    let imported = 0, already = 0
     const errors = []
-    for (const r of valid) {
-      const { data, error } = await sb.from('patients').insert(buildPatientRow(r)).select('id').single()
-      if (error) { errors.push(`${r.full_name}: ${error.message}`); continue }
-      imported++
-      if (hasMedicalData(r)) {
-        await sb.from('medical_history').insert({
-          patient_id: data.id,
-          condition: r.medical_conditions || null,
-          allergies: r.allergies || null,
-          current_medications: r.current_medications || null,
-          pregnancy_status: parseBool(r.pregnancy_status),
-        })
+    try {
+      for (const [index, r] of rows.entries()) {
+        try {
+          if (!r.full_name?.trim() || (!r.phone?.trim() && !r.source_id?.trim())) throw new Error('Name and either phone or source_id required')
+          const patient = buildPatientRow(r)
+          const medical = hasMedicalData(r) ? { condition: r.medical_conditions || null, allergies: r.allergies || null, current_medications: r.current_medications || null, pregnancy_status: r.pregnancy_status ? parseBool(r.pregnancy_status) : null, notes: [r['medical history summary'], r['other history (hosp/surgery/chemo)']].filter(Boolean).join('\n') || null } : null
+          const fingerprint = JSON.stringify([patient, medical])
+          const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint)))).map(b => b.toString(16).padStart(2, '0')).join('')
+          const key = 'click4appointment:' + (r.source_id ? 'id:' + r.source_id : 'row:' + hash)
+          const { data, error } = await sb.rpc('import_patient', { p_key: key, p_patient: patient, p_medical: medical })
+          if (error) throw error
+          if (data.status === 'already_imported') already++; else imported++
+        } catch (e) { errors.push(`Row ${index + 2} (${r.full_name || 'unnamed'}): ${e.message}`) }
       }
-    }
-    setBusy(false)
-    setResult({ imported, errors })
-    toast(`Imported ${imported} of ${valid.length} patients`)
+      setResult({ imported, already, errors })
+      toast(`${imported} imported; ${already} already imported; ${errors.length} failed`)
+    } finally { lock.current = false; setBusy(false) }
   }
 
   if (!isAdmin) return <div className="empty">Only admins can import patients.</div>
@@ -147,7 +57,7 @@ export default function PatientImport() {
     <>
       <div className="pagehead"><h2>Patient import</h2></div>
       <p style={{ fontSize: '.74rem', color: 'var(--mid)', marginBottom: '1rem' }}>
-        Upload a CSV using the template layout below. Required columns: <b>full_name</b>, <b>phone</b>.
+        Upload a CSV using the template layout below. Required: <b>full_name</b> and either <b>phone</b> or <b>source_id</b> per patient. Include the phone column even when blank.
         Multiple tags separated with <code>|</code>.
       </p>
 
@@ -165,13 +75,14 @@ export default function PatientImport() {
         </tbody>
       </table>
 
-      <input type="file" accept=".csv" onChange={onFile} />
+      <p>Use the original patient ID as <code>source_id</code> when available. Re-uploading the same source ID skips it; changed existing records require review. This imports demographics and medical history, not appointments, treatments or balances.</p>
+      <input type="file" accept=".csv" disabled={busy} onChange={onFile} />
 
       {rows.length > 0 && (
         <div style={{ marginTop: '1rem' }}>
           <p style={{ fontSize: '.8rem' }}>
             <b>{fileName}</b>: {rows.length} rows parsed, {valid.length} ready to import
-            {skipped.length > 0 && `, ${skipped.length} skipped (missing name or phone)`}.
+            {skipped.length > 0 && `, ${skipped.length} invalid (missing name or both phone and source ID)`}.
           </p>
           <button className="btn sm" disabled={busy || !valid.length} onClick={runImport}>
             {busy ? 'Importing…' : `Import ${valid.length} patients`}
@@ -181,7 +92,8 @@ export default function PatientImport() {
 
       {result && (
         <div style={{ marginTop: '1rem', fontSize: '.8rem' }}>
-          <p>Imported: {result.imported}</p>
+          <p>Imported: {result.imported} · Already imported: {result.already} · Failed: {result.errors.length}</p>
+          <button className="btn ghost" onClick={() => { const url = URL.createObjectURL(new Blob([JSON.stringify({ fileName, ...result }, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = 'import-report.json'; a.click(); URL.revokeObjectURL(url) }}>Download import report</button>
           {result.errors.length > 0 && (
             <>
               <p style={{ color: 'var(--danger, #c0392b)' }}>Errors ({result.errors.length}):</p>
