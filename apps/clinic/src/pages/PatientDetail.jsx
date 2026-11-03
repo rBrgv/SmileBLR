@@ -24,6 +24,7 @@ import PerioChart from '../components/PerioChart'
 import { PatientForm } from './Patients'
 import { AppointmentForm, APPT_STATUSES, completeAppointment } from './Appointments'
 import { useRole } from '../lib/RoleContext'
+import { patientAge } from '../lib/age'
 import { logActivity } from '../lib/activityLog'
 
 const TABS = ['Overview', 'Tooth Chart', 'Medical History', 'Appointments', 'Prescriptions', 'Invoices', 'X-Rays', 'Treatment Records', 'Perio Chart', 'Documents', 'Consultations']
@@ -54,6 +55,7 @@ export default function PatientDetail() {
 
   if (!d?.p) return <div className="empty">Loading…</div>
   const { p } = d
+  const age = patientAge(p)
   if (p.merged_into) return <MergedBanner mergedInto={p.merged_into} />
 
   async function setApptStatus(a, status, reason = null) {
@@ -75,14 +77,11 @@ export default function PatientDetail() {
       )}
       <div className="pd-head">
         <div>
-          <h3>{p.full_name}{(p.tags || []).map(t => <span key={t} className="badge b-partial" style={{ marginLeft: '.5rem' }}>{t}</span>)}</h3>
+          <h3>{p.full_name}<span className="sub" style={{ marginLeft: '.6rem', fontWeight: 'normal' }}>{p.patient_code}{p.manual_id && ' · file ' + p.manual_id}</span>{(p.tags || []).map(t => <span key={t} className="badge b-partial" style={{ marginLeft: '.5rem' }}>{t}</span>)}</h3>
           <div className="sub">
-            {p.phone || 'Phone not recorded'}{p.email && ' · ' + p.email}{p.date_of_birth && ' · DOB ' + fmtD(p.date_of_birth)}{p.gender && ' · ' + p.gender}
-            {/* Click4Appointment recorded an age, not a birth date. Show it with
-                the date it was taken, and prompt for the real one. */}
-            {!p.date_of_birth && p.approx_age != null && <>
-              {' · '}Age {p.approx_age} as of {fmtD(p.approx_age_recorded_on)}
-              {' '}<button className="btn sm ghost" onClick={() => setModal({ type: 'edit' })}>Confirm date of birth</button>
+            {p.phone || 'Phone not recorded'}{p.email && ' · ' + p.email}{age && ' · Age ' + age.age + (age.exact ? '' : ' (from ' + age.recordedAge + ' recorded ' + fmtD(age.recordedOn) + ')')}{p.gender && ' · ' + p.gender}
+            {!age && <>
+              {' · '}<button className="btn sm ghost" onClick={() => setModal({ type: 'edit' })}>Add age</button>
             </>}<br />
             {p.address && <>{p.address}<br /></>}
             Registered {fmtD(p.created_at)} · Consent {p.consent_given ? '✓ ' + fmtD(p.consent_date) : '✗'}
@@ -120,7 +119,7 @@ export default function PatientDetail() {
         </>
       )}
 
-      {tab === 1 && <ToothChart readOnly={!canWriteClinical(role)} teeth={d.teeth} dateOfBirth={p.date_of_birth} onSelect={(n, t) => canWriteClinical(role) && setModal({ type: 'tooth', n, t })} />}
+      {tab === 1 && <ToothChart readOnly={!canWriteClinical(role)} teeth={d.teeth} age={age?.age} onSelect={(n, t) => canWriteClinical(role) && setModal({ type: 'tooth', n, t })} />}
 
       {tab === 2 && <MedicalHistory patientId={id} mh={d.mh} onSaved={load} />}
 

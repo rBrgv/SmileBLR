@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ageLabel } from '../lib/age'
+import { fmtD } from '../lib/format'
 import { sb } from '../lib/supabase'
 
 const sections = [
@@ -28,12 +30,25 @@ function PatientQuickSearch() {
   useEffect(() => {
     if (!q.trim()) { setResults([]); return }
     const t = setTimeout(async () => {
-      const [byName, byPhone] = await Promise.all([
-        sb.from('patients').select('id,full_name,phone').ilike('full_name', `%${q.trim()}%`).limit(6),
-        sb.from('patients').select('id,full_name,phone').ilike('phone', `%${q.trim()}%`).limit(6),
-      ])
-      const merged = [...(byName.data ?? []), ...(byPhone.data ?? [])]
-        .filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i).slice(0, 8)
+      // Name, phone, our id and the clinic's file number — whichever the
+      // caller happens to have in front of them.
+      const term = q.trim().replace(/[\\%_]/g, c => '\\' + c)
+      const pattern = JSON.stringify('%' + term + '%')
+      const cols = 'id,full_name,phone,patient_code,manual_id,date_of_birth,approx_age,approx_age_recorded_on'
+      const { data } = await sb.from('patients').select(cols).is('merged_into', null)
+        .or(`full_name.ilike.${pattern},phone.ilike.${pattern},patient_code.ilike.${pattern},manual_id.ilike.${pattern}`)
+        .limit(8)
+      const merged = data ?? []
+
+      // One extra round trip for the whole page of suggestions, not one each.
+      if (merged.length) {
+        const { data: visits } = await sb.from('treatment_records')
+          .select('patient_id, performed_date').in('patient_id', merged.map(p => p.id))
+          .not('performed_date', 'is', null).order('performed_date', { ascending: false })
+        const last = new Map()
+        for (const v of visits ?? []) if (!last.has(v.patient_id)) last.set(v.patient_id, v.performed_date)
+        for (const p of merged) p.last_visit = last.get(p.id) ?? null
+      }
       setResults(merged)
     }, 250)
     return () => clearTimeout(t)
@@ -54,7 +69,14 @@ function PatientQuickSearch() {
         <div className="quick-search-results">
           {results.map(p => (
             <div key={p.id} className="quick-search-row" onMouseDown={() => pick(p.id)}>
-              <b>{p.full_name}</b><span>{p.phone}</span>
+              <b>{p.full_name}</b>
+              <span>
+                {p.patient_code}
+                {p.manual_id && ' · ' + p.manual_id}
+                {ageLabel(p) && ' · age ' + ageLabel(p)}
+                {p.phone && p.phone !== 'N/A' ? ' · ' + p.phone : ''}
+                {p.last_visit ? ' · last visit ' + fmtD(p.last_visit) : ' · no visits recorded'}
+              </span>
             </div>
           ))}
         </div>
