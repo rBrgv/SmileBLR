@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
+import { ageLabel } from '../lib/age'
+import { invoiceNo } from '../lib/bills'
+import { rupeesInWords } from '../lib/words'
 import PrintDoc from '../components/PrintDoc'
 
 export default function PrintInvoice() {
@@ -11,7 +14,7 @@ export default function PrintInvoice() {
   const [inv, setInv] = useState(null)
 
   useEffect(() => {
-    sb.from('invoices').select('*, patients(full_name,phone,address), staff(full_name)').eq('id', id).single()
+    sb.from('invoices').select('*, patients(*), staff(full_name)').eq('id', id).single()
       .then(({ data }) => setInv(data))
   }, [id])
 
@@ -19,9 +22,10 @@ export default function PrintInvoice() {
   const total = Number(inv.amount) + Number(inv.tax_amount || 0)
   return (
     <PrintDoc title="Invoice">
-      {inv.invoice_number && <div className="print-row"><b>Invoice #</b><span>{String(inv.invoice_number).padStart(6, '0')}</span></div>}
+      {inv.invoice_number && <div className="print-row"><b>Invoice #</b><span>{invoiceNo(inv)}</span></div>}
       <div className="print-row"><b>Invoice date</b><span>{fmtD(inv.invoice_date)}</span></div>
-      <div className="print-row"><b>Patient</b><span>{inv.patients?.full_name}</span></div>
+      <div className="print-row"><b>Patient</b><span>{inv.patients?.full_name}{inv.patients?.patient_code ? ' · ' + inv.patients.patient_code : ''}{inv.patients?.manual_id ? ' · file ' + inv.patients.manual_id : ''}</span></div>
+      <div className="print-row"><b>Age / gender</b><span>{[ageLabel(inv.patients) ? ageLabel(inv.patients) + ' yrs' : null, inv.patients?.gender].filter(Boolean).join(' · ') || '—'}</span></div>
       <div className="print-row"><b>Phone</b><span>{inv.patients?.phone || '—'}</span></div>
       {inv.patients?.address && <div className="print-row"><b>Address</b><span>{inv.patients.address}</span></div>}
       {inv.staff?.full_name && <div className="print-row"><b>Treating doctor</b><span>{inv.staff.full_name}</span></div>}
@@ -32,6 +36,7 @@ export default function PrintInvoice() {
       <div className="print-row"><b>Subtotal after discounts</b><span>{inr(inv.amount)}</span></div>
       {inv.tax_amount ? <div className="print-row"><b>Tax</b><span>{inr(inv.tax_amount)}</span></div> : null}
       <div className="print-amount">{inr(total)}</div>
+      <div className="print-block"><h4>Amount in words</h4><p>{rupeesInWords(total)}</p></div>
       <div className="print-row"><b>Net received</b><span>{inv.amount_paid == null && inv.payment_status === 'partial' ? 'Needs reconciliation' : inr(received(inv))}</span></div>
       <div className="print-row">
         <b>{credit(inv) > 0 ? 'Credit due to patient' : 'Balance due'}</b>

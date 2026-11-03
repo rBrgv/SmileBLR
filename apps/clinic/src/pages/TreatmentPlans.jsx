@@ -2,6 +2,7 @@ import { statusLabel } from '../lib/status'
 import { canWriteClinical } from '../lib/clinical'
 import ClinicalButton from '../components/ClinicalButton'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
 import { useToast } from '../components/Toast'
@@ -12,6 +13,9 @@ import { useRole } from '../lib/RoleContext'
 import { RecordForm } from '../components/TreatmentRecordPanel'
 import SignaturePad from '../components/SignaturePad'
 import { logActivity } from '../lib/activityLog'
+import InvoiceForm from '../components/InvoiceForm'
+import { ConsentFormForm, SignForm } from './ConsentForms'
+import { waLink, planMessage } from '../lib/share'
 
 export const PLAN_STATUSES = ['proposed', 'accepted', 'in_progress', 'completed', 'cancelled']
 const STAGE_STATUSES = ['pending', 'scheduled', 'in_progress', 'completed', 'not_treated']
@@ -256,6 +260,28 @@ function TemplateDetail({ id, onClose, onChanged }) {
   if (!template || !stages) return null
   return (
     <Modal title={'Template — ' + template.name} onClose={onClose}>
+      {showInvoice && (
+        <InvoiceForm
+          patientId={plan.patient_id} doctors={doctors}
+          fromPlan={{
+            id: plan.id, plan_description: plan.plan_description, patient_approved: plan.patient_approved,
+            items: stages.length
+              ? [...stages].sort((a, b) => a.stage_number - b.stage_number).map(s => ({ description: s.description || 'Stage ' + s.stage_number, unit_price: s.estimated_cost || 0 }))
+              : [{ description: plan.plan_description || 'Treatment plan', unit_price: plan.total_estimated_cost || 0 }],
+          }}
+          onClose={() => setShowInvoice(false)} onDone={() => { setShowInvoice(false); toast('Invoice raised from this plan') }} />
+      )}
+      {showConsent && (
+        <ConsentFormForm patientId={plan.patient_id} procedure={plan.plan_description || ''}
+          onClose={() => setShowConsent(false)}
+          onDone={form => { setShowConsent(false); setSignConsent(form) }} />
+      )}
+      {/* Straight on to the signature, rather than sending staff to another
+          screen to find the form they just made. */}
+      {signConsent && (
+        <SignForm form={signConsent} onClose={() => setSignConsent(null)}
+          onDone={() => { setSignConsent(null); toast('Consent recorded') }} />
+      )}
       <ClinicalButton className="btn sm" style={{ marginBottom: '.75rem' }} onClick={() => setShowStage(true)}>+ Add stage</ClinicalButton>
       {!stages.length ? <div className="empty">No stages yet.</div> : (
         <table className="tbl">
@@ -307,12 +333,17 @@ function PlanDetail({ id, onClose, onChanged }) {
   const [logStage, setLogStage] = useState(null)
   const [loggedByStage, setLoggedByStage] = useState({})
   const [showApproval, setShowApproval] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [showConsent, setShowConsent] = useState(false)
+  const [signConsent, setSignConsent] = useState(null)
+  const [doctors, setDoctors] = useState([])
   const toast = useToast()
   const role = useRole()
+  const nav = useNavigate()
   const canDeleteStage = role === 'admin' || role === 'doctor'
 
   async function load() {
-    const { data: p } = await sb.from('treatment_plans').select('*, patients(id,full_name)').eq('id', id).single()
+    const { data: p } = await sb.from('treatment_plans').select('*, patients(id,full_name,phone)').eq('id', id).single()
     const { data: s } = await sb.from('treatment_plan_stages').select('*').eq('plan_id', id).order('stage_number')
     setPlan(p); setStages(s ?? [])
     if (p) {
@@ -328,6 +359,11 @@ function PlanDetail({ id, onClose, onChanged }) {
     }
   }
   useEffect(() => { load() }, [id])
+  // Needed only when an invoice is raised from here, but cheap and small.
+  useEffect(() => {
+    sb.from('staff').select('id, full_name').eq('role', 'doctor').eq('active', true).order('full_name')
+      .then(({ data }) => setDoctors(data ?? []))
+  }, [])
 
   async function setStageStatus(stage, status) {
     const { error } = await sb.from('treatment_plan_stages').update({ status }).eq('id', stage.id)
@@ -357,9 +393,18 @@ function PlanDetail({ id, onClose, onChanged }) {
   return (
     <Modal title={'Plan — ' + plan.patients?.full_name} onClose={onClose}>
       <p style={{ fontSize: '.78rem', color: 'var(--mid)', marginBottom: '.5rem' }}>{plan.plan_description || 'No description'}</p>
-      <p style={{ fontSize: '.78rem', marginBottom: '.75rem' }}>Estimated cost: <b>{inr(plan.total_estimated_cost)}</b>{' '}
+      <p style={{ fontSize: '.78rem', marginBottom: '.5rem' }}>Estimated cost: <b>{inr(plan.total_estimated_cost)}</b></p>
+      {/* Everything the clinic does from a plan, in the order they do it:
+          bill it, send it, print it, take consent, write the visit up. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.75rem' }}>
+        <button className="btn sm" onClick={() => setShowInvoice(true)}>Create invoice</button>
+        {waLink(plan.patients?.phone)
+          ? <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(plan.patients.phone, planMessage(plan, stages, plan.patients))}>Share</a>
+          : null}
         <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/plan/' + id}>Print estimate</a>
-      </p>
+        <ClinicalButton className="btn sm ghost" onClick={() => setShowConsent(true)}>Sign consent</ClinicalButton>
+        <button className="btn sm ghost" onClick={() => nav('/patients/' + plan.patient_id + '?tab=Consultations')}>Consultation summary</button>
+      </div>
       {plan.patient_approved ? (
         <p style={{ fontSize: '.78rem', marginBottom: '1rem' }}>
           <span className="badge b-completed">approved</span> by patient on {fmtD(plan.approved_date)}

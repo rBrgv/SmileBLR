@@ -6,11 +6,11 @@ import { inr } from '../lib/format'
 import Modal from './Modal'
 import ToothSelect from './ToothSelect'
 import { useToast } from './Toast'
-export default function InvoiceForm({patientId,doctors,invoice,onClose,onDone}) {
+export default function InvoiceForm({patientId,doctors,invoice,fromPlan,onClose,onDone}) {
   // An issued invoice is editable: 026 removed the freeze, the database
   // re-totals from the lines, and the previous version is kept automatically.
   const editing=Boolean(invoice)
-  const [items,setItems]=useState(invoice?.items?.length?invoice.items.map(i=>({...emptyInvoiceLine(),...i})):[emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(invoice?.source_plan_id||''),[doctor,setDoctor]=useState(invoice?.doctor_id||''),[notes,setNotes]=useState(invoice?.notes||''),[busy,setBusy]=useState(false)
+  const [items,setItems]=useState(invoice?.items?.length?invoice.items.map(i=>({...emptyInvoiceLine(),...i})):fromPlan?.items?.length?fromPlan.items.map(i=>({...emptyInvoiceLine(),...i})):[emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(invoice?.source_plan_id||fromPlan?.id||''),[doctor,setDoctor]=useState(invoice?.doctor_id||''),[notes,setNotes]=useState(invoice?.notes||''),[busy,setBusy]=useState(false)
   const lock=useRef(false),toast=useToast(),totals=invoiceTotals(items)
   useEffect(()=>{
     Promise.all([
@@ -18,8 +18,11 @@ export default function InvoiceForm({patientId,doctors,invoice,onClose,onDone}) 
       fetchAll(()=>sb.from('treatment_records').select('*, treatments(name,price_min)').eq('patient_id',patientId).is('deleted_at',null).order('id'))
     ]).then(([p,r])=>{setPlans(p);setRecords(r)}).catch(e=>toast(e.message))
   },[patientId])
-  function usePlan(id){setPlan(id);if(!id)return;const p=plans.find(p=>p.id===id);const stages=[...(p.treatment_plan_stages||[])].sort((a,b)=>a.stage_number-b.stage_number);setItems(stages.length?stages.map(s=>({...emptyInvoiceLine(),description:s.description||`Stage ${s.stage_number}`,unit_price:s.estimated_cost||0})):[{...emptyInvoiceLine(),description:p.plan_description||'Treatment plan',unit_price:p.total_estimated_cost||0}])}
+  function usePlan(id){setPlan(id);if(!id)return;const p=plans.find(p=>p.id===id);if(!p){if(fromPlan?.id===id&&fromPlan.items?.length)setItems(fromPlan.items.map(i=>({...emptyInvoiceLine(),...i})));return}const stages=[...(p.treatment_plan_stages||[])].sort((a,b)=>a.stage_number-b.stage_number);setItems(stages.length?stages.map(s=>({...emptyInvoiceLine(),description:s.description||`Stage ${s.stage_number}`,unit_price:s.estimated_cost||0})):[{...emptyInvoiceLine(),description:p.plan_description||'Treatment plan',unit_price:p.total_estimated_cost||0}])}
   function addRecord(id){const r=records.find(r=>r.id===id);if(!r)return;const line={...emptyInvoiceLine(),description:r.treatments?.name||r.notes||'Treatment',tooth_number:r.tooth_number||'',unit_price:r.treatments?.price_min||0,treatment_record_id:r.id};setItems(rows=>rows.length===1&&!rows[0].description?[line]:[...rows,line]);setPlan('')}
+  // A plan opened straight from the plan screen may not be approved yet, so it
+  // is listed alongside the approved estimates rather than silently missing.
+  const planOptions=fromPlan&&!plans.some(p=>p.id===fromPlan.id)?[{...fromPlan,unapproved:!fromPlan.patient_approved},...plans]:plans
   const update=(i,k,v)=>setItems(rows=>rows.map((r,j)=>i===j?{...r,[k]:v}:r))
   async function save(e){e.preventDefault();if(lock.current)return;lock.current=true;setBusy(true)
     try{
@@ -32,7 +35,7 @@ export default function InvoiceForm({patientId,doctors,invoice,onClose,onDone}) 
   }
   return <Modal title={editing?'Edit invoice':'New itemised invoice'} onClose={()=>!busy&&onClose()}><form onSubmit={save}>
     {editing&&received(invoice)>0&&<p>{inr(received(invoice))} has already been received against this invoice. Correcting the charges here does not change what was paid — settle any difference in the payment editor.</p>}
-    <label>Start from an approved estimate<select value={plan} onChange={e=>usePlan(e.target.value)}><option value="">Enter procedures manually</option>{plans.map(p=><option key={p.id} value={p.id}>{p.plan_description||p.id}</option>)}</select></label>
+    <label>Start from an approved estimate<select value={plan} onChange={e=>usePlan(e.target.value)}><option value="">Enter procedures manually</option>{planOptions.map(p=><option key={p.id} value={p.id}>{p.plan_description||p.id}{p.unapproved?' · not yet approved':''}</option>)}</select></label>
     <label>Add recorded treatment<select value="" onChange={e=>addRecord(e.target.value)}><option value="">Choose treatment</option>{records.map(r=><option key={r.id} value={r.id}>{r.performed_date} · {r.treatments?.name||'Treatment'} · Tooth {r.tooth_number||'—'}</option>)}</select></label>
     <p>Review charges before issuing. Adding a treatment here does not determine whether it was previously billed.</p>
     {items.map((r,i)=><fieldset key={i} style={{marginBottom:'1rem'}}><legend>Procedure {i+1}</legend>

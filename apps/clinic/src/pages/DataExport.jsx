@@ -5,7 +5,7 @@ import { today } from '../lib/format'
 import { useToast } from '../components/Toast'
 import { useRole } from '../lib/RoleContext'
 
-const TABLES = ['consultations', 'consultation_amendments', 'consent_templates', 'patients', 'medical_history', 'appointments', 'appointment_waitlist', 'invoices', 'invoice_payment_changes', 'treatment_plans', 'treatment_plan_stages', 'treatment_records', 'prescriptions', 'tooth_chart', 'periodontal_exams', 'periodontal_readings', 'xray_images', 'patient_documents', 'consent_forms', 'recall_reminders', 'lab_orders', 'referrals', 'insurance_claims', 'inventory', 'staff', 'staff_leave', 'treatments', 'plan_templates', 'plan_template_stages', 'compliance_logs', 'activity_log', 'bookings', 'clinic_settings', 'campaigns', 'campaign_sends', 'wa_conversations', 'wa_messages'].map(key => ({ key, label: key.replaceAll('_', ' '), select: '*' }))
+const TABLES = ['consultations', 'consultation_amendments', 'consent_templates', 'patients', 'medical_history', 'patient_vitals', 'appointments', 'appointment_waitlist', 'invoices', 'invoice_payment_changes', 'treatment_plans', 'treatment_plan_stages', 'treatment_records', 'prescriptions', 'tooth_chart', 'periodontal_exams', 'periodontal_readings', 'xray_images', 'patient_documents', 'consent_forms', 'recall_reminders', 'lab_orders', 'referrals', 'insurance_claims', 'inventory', 'staff', 'staff_leave', 'treatments', 'plan_templates', 'plan_template_stages', 'compliance_logs', 'activity_log', 'bookings', 'clinic_settings', 'campaigns', 'campaign_sends', 'wa_conversations', 'wa_messages'].map(key => ({ key, label: key.replaceAll('_', ' '), select: '*' }))
 
 
 // Flattens one level of nested relation objects (e.g. patients: {full_name}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { fmtDT, digits } from '../lib/format'
+import { waLink } from '../lib/share'
+import { fmtDT } from '../lib/format'
 import { useToast } from '../components/Toast'
 import StatusSelect from '../components/StatusSelect'
 
@@ -66,7 +67,7 @@ export default function Bookings() {
               <td><StatusSelect value={b.status} options={STATUSES} onChange={s => setStatus(b.id, s)} /></td>
               <td>
                 <button className="btn sm pink" onClick={() => convert(b)}>→ Patient</button>{' '}
-                <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(b.phone)}>WA</a>
+                {waLink(b.phone) && <a className="btn sm ghost" target="_blank" rel="noreferrer" href={waLink(b.phone)}>WA</a>}
               </td>
             </tr>
           ))}</tbody>

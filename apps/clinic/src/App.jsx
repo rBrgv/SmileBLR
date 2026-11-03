@@ -25,6 +25,9 @@ import ConsentForms from './pages/ConsentForms'
 import InsuranceClaims from './pages/InsuranceClaims'
 import Trash from './pages/Trash'
 import PrintInvoice from './pages/PrintInvoice'
+import PrintReceipt from './pages/PrintReceipt'
+import PrintCaseSheet from './pages/PrintCaseSheet'
+import PrintTreatmentSummary from './pages/PrintTreatmentSummary'
 import PrintPrescription from './pages/PrintPrescription'
 import PrintConsent from './pages/PrintConsent'
 import PrintPostOp from './pages/PrintPostOp'
@@ -61,6 +64,9 @@ export default function App() {
       <RoleProvider key={session.user.id} userId={session.user.id}>
         <Routes>
           <Route path="/print/invoice/:id" element={<PrintInvoice />} />
+          <Route path="/print/receipt/:id" element={<PrintReceipt />} />
+          <Route path="/print/case-sheet/:id" element={<PrintCaseSheet />} />
+          <Route path="/print/treatment-summary/:id" element={<PrintTreatmentSummary />} />
           <Route path="/print/prescription/:id" element={<PrintPrescription />} />
           <Route path="/print/consent/:id" element={<PrintConsent />} />
           <Route path="/print/post-op/:id" element={<PrintPostOp />} />

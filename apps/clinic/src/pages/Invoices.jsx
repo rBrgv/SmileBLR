@@ -5,10 +5,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
+import { invoiceNo, receiptNo } from '../lib/bills'
+import { waLink, invoiceMessage, receiptMessage } from '../lib/share'
 import { useToast } from '../components/Toast'
 
 export default function Invoices() {
   const [rows, setRows] = useState(null)
+  const [receipts, setReceipts] = useState({}) // invoice id -> latest receipt
   const [editing, setEditing] = useState(null)
   const [doctors, setDoctors] = useState([])
   const toast = useToast()
@@ -16,8 +19,11 @@ export default function Invoices() {
 
   async function load() {
     try {
-      const data = await fetchAll(() => sb.from('invoices').select('*, patients(full_name), staff(full_name)').order('invoice_date', { ascending: false }).order('id'))
+      const data = await fetchAll(() => sb.from('invoices').select('*, patients(full_name,phone), staff(full_name)').order('invoice_date', { ascending: false }).order('id'))
       setRows(data)
+      // One receipt per payment taken; the newest is the one reception reprints.
+      const paid = await fetchAll(() => sb.from('invoice_payment_changes').select('*').order('receipt_number'))
+      setReceipts(Object.fromEntries(paid.map(r => [r.invoice_id, r])))
     } catch (e) { toast('Error: ' + e.message) }
   }
 
@@ -44,19 +50,24 @@ export default function Invoices() {
       </div>
       {!rows.length ? <div className="empty">No invoices yet. Create one from a patient page.</div> : (
         <table className="tbl">
-          <thead><tr><th>#</th><th>Date</th><th>Patient</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice #</th><th>Date</th><th>Patient</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th>Last receipt</th><th></th></tr></thead>
           <tbody>{rows.map(v => (
             <tr key={v.id}>
-              <td>{v.invoice_number ? String(v.invoice_number).padStart(6, '0') : '—'}</td>
+              <td>{invoiceNo(v)}</td>
               <td>{fmtD(v.invoice_date)}</td>
               <td className="link" onClick={() => nav('/patients/' + v.patient_id)}>{v.patients?.full_name}</td>
               <td>{inr(v.amount)}{v.tax_amount ? <span style={{ color: 'var(--soft)' }}> +{inr(v.tax_amount)} tax</span> : ''}</td>
               <td>{v.payment_method || '—'}</td>
               <td>{v.staff?.full_name || '—'}</td>
               <td><PaymentEditor invoice={v} onDone={load} /></td>
+              <td>{receipts[v.id]
+                ? <><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/receipt/' + receipts[v.id].id}>{receiptNo(receipts[v.id])}</a>{' '}
+                  {waLink(v.patients?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(v.patients.phone, receiptMessage(v, v.patients, receipts[v.id]))}>Share</a>}</>
+                : '—'}</td>
               <td>
                 <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>{' '}
-                <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a>
+                <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a>{' '}
+                {waLink(v.patients?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(v.patients.phone, invoiceMessage(v, v.patients))}>Share</a>}
               </td>
             </tr>
           ))}</tbody>

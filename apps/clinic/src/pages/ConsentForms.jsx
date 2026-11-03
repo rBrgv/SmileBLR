@@ -64,7 +64,7 @@ export default function ConsentForms() {
               <td><span className={`badge ${c.consent_given ? 'b-completed' : 'b-pending'}`}>{c.consent_given ? 'signed' : 'unsigned'}</span></td>
               <td>{c.signed_date ? fmtD(c.signed_date) : '—'}{c.consent_given && !c.signature_data && !c.document_url && <div>Legacy record: evidence not recorded</div>}</td>
               <td>
-                {!c.consent_given && <ClinicalButton className="btn sm ghost" onClick={() => setSign(c)}>Mark signed</ClinicalButton>}{' '}
+                <ClinicalButton className="btn sm ghost" onClick={() => setSign(c)}>{c.consent_given ? 'Correct' : 'Mark signed'}</ClinicalButton>{' '}
                 {c.document_url?.startsWith('https://') && <a className="btn sm ghost" target="_blank" rel="noreferrer" href={c.document_url}>Document</a>}{' '}
                 <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/consent/' + c.id}>Print</a>{' '}
                 <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(c.id)}>Delete</ClinicalButton>
@@ -81,19 +81,19 @@ export default function ConsentForms() {
   )
 }
 
-function ConsentFormForm({onClose,onDone}) {
+export function ConsentFormForm({patientId,procedure,onClose,onDone}) {
   const [patients,setPatients]=useState([]),[templates,setTemplates]=useState([]),[newTemplate,setNewTemplate]=useState(false),[busy,setBusy]=useState(false)
-  const [f,setF]=useState({patient_id:'',procedure:'',statement:'',template_id:''})
+  const [f,setF]=useState({patient_id:patientId||'',procedure:procedure||'',statement:'',template_id:''})
   const lock=useRef(false),toast=useToast()
   const set=k=>e=>setF(x=>({...x,[k]:e.target.value}))
   function loadTemplates(){fetchAll(()=>sb.from('consent_templates').select('*').order('created_at',{ascending:false}).order('id')).then(setTemplates).catch(e=>toast(e.message))}
-  useEffect(()=>{fetchAll(()=>sb.from('patients').select('id,full_name').is('merged_into',null).order('full_name').order('id')).then(setPatients).catch(e=>toast(e.message));loadTemplates()},[])
+  useEffect(()=>{if(!patientId)fetchAll(()=>sb.from('patients').select('id,full_name').is('merged_into',null).order('full_name').order('id')).then(setPatients).catch(e=>toast(e.message));loadTemplates()},[])
   async function save(e){e.preventDefault();if(lock.current)return;lock.current=true;setBusy(true)
-    try{const {error}=await sb.from('consent_forms').insert({...f,template_id:f.template_id||null});if(error)throw error;toast('Consent form created');onDone()}
+    try{const {data,error}=await sb.from('consent_forms').insert({...f,template_id:f.template_id||null}).select('*, patients(id,full_name)').single();if(error)throw error;toast('Consent form created');onDone(data)}
     catch(e){toast(e.message)}finally{lock.current=false;setBusy(false)}
   }
   return <><Modal title="New consent form" onClose={()=>!busy&&onClose()}><form onSubmit={save}>
-    <label>Patient<select required value={f.patient_id} onChange={set('patient_id')}><option value="">Choose patient</option>{patients.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></label>
+    {!patientId&&<label>Patient<select required value={f.patient_id} onChange={set('patient_id')}><option value="">Choose patient</option>{patients.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></label>}
     <label>Clinic-approved template<select value={f.template_id} onChange={e=>{const t=templates.find(t=>t.id===e.target.value);setF(x=>({...x,template_id:t?.id||'',procedure:t?.procedure||'',statement:t?.statement||''}))}}><option value="">Write procedure-specific consent</option>{templates.map(t=><option key={t.id} value={t.id}>{t.procedure} · {fmtD(t.created_at)}</option>)}</select></label>
     <ClinicalButton type="button" className="btn ghost sm" onClick={()=>setNewTemplate(true)}>+ Clinic-approved template</ClinicalButton>
     <label>Procedure<input required readOnly={!!f.template_id} value={f.procedure} onChange={set('procedure')}/></label>
@@ -117,22 +117,29 @@ function TemplateForm({onClose,onDone}) {
     <ClinicalButton type="submit" className="btn" disabled={busy}>Approve template</ClinicalButton>
   </form></Modal>
 }
-function SignForm({form,onClose,onDone}) {
-  const [documentUrl,setDocumentUrl]=useState(form.document_url||''),[signature,setSignature]=useState(null),[statement,setStatement]=useState(form.statement||'')
-  const [kind,setKind]=useState('patient'),[name,setName]=useState(form.patients?.full_name||''),[relationship,setRelationship]=useState(''),[busy,setBusy]=useState(false)
+export function SignForm({form,onClose,onDone}) {
+  // Correcting a signed form is allowed since 026 — a wrong signer name or a
+  // re-signed page should not need a second form. The database keeps the
+  // previous version and does not re-date the original signing.
+  const correcting=!!form.consent_given
+  const [documentUrl,setDocumentUrl]=useState(form.document_url||''),[signature,setSignature]=useState(form.signature_data||null),[statement,setStatement]=useState(form.statement||'')
+  const [kind,setKind]=useState(form.signer_kind||'patient'),[name,setName]=useState(form.signer_name||form.patients?.full_name||''),[relationship,setRelationship]=useState(form.guardian_relationship||''),[busy,setBusy]=useState(false)
   const lock=useRef(false),toast=useToast()
   async function save(e){e.preventDefault();if(lock.current)return
     if(!signature&&!/^https:\/\/\S+$/.test(documentUrl.trim()))return toast('Capture a signature or link the signed document.')
     lock.current=true;setBusy(true)
     try{
-      const {data,error}=await sb.from('consent_forms').update({consent_given:true,statement:statement.trim(),document_url:documentUrl.trim()||null,signature_data:signature,signer_kind:kind,signer_name:name.trim(),guardian_relationship:kind==='guardian'?relationship.trim():null}).eq('id',form.id).eq('consent_given',false).select('id')
+      let q=sb.from('consent_forms').update({consent_given:true,statement:statement.trim(),document_url:documentUrl.trim()||null,signature_data:signature,signer_kind:kind,signer_name:name.trim(),guardian_relationship:kind==='guardian'?relationship.trim():null}).eq('id',form.id)
+      if(!correcting)q=q.eq('consent_given',false) // a first signing must not race another
+      const {data,error}=await q.select('id')
       if(error)throw error;if(!data?.length)throw new Error('Form already signed or changed. Reload before continuing.')
-      logActivity('consent.signed','consent_form',form.id,`Consent evidence recorded for ${form.procedure}`);toast('Consent recorded');onDone()
+      logActivity(correcting?'consent.corrected':'consent.signed','consent_form',form.id,`Consent evidence ${correcting?'corrected':'recorded'} for ${form.procedure}`);toast(correcting?'Consent corrected':'Consent recorded');onDone()
     }catch(e){toast(e.message)}finally{lock.current=false;setBusy(false)}
   }
-  return <Modal title={'Record signed consent — '+form.procedure} onClose={()=>!busy&&onClose()}><form onSubmit={save}>
-    <label>Consent statement<textarea required readOnly={!!form.statement} rows={6} value={statement} onChange={e=>setStatement(e.target.value)}/></label>
+  return <Modal title={(correcting?'Correct signed consent — ':'Record signed consent — ')+form.procedure} onClose={()=>!busy&&onClose()}><form onSubmit={save}>
+    <label>Consent statement<textarea required readOnly={!!form.statement&&!correcting} rows={6} value={statement} onChange={e=>setStatement(e.target.value)}/></label>
     {!form.statement&&<p>Legacy draft: enter the exact procedure-specific wording explained to the signer.</p>}
+    {correcting&&<p>Signed {fmtD(form.signed_date)}. A correction keeps that date, and keeps the version it replaced.</p>}
     <label>Signed by<select value={kind} onChange={e=>{setKind(e.target.value);setName(e.target.value==='patient'?form.patients?.full_name||'':'')}}><option value="patient">Patient</option><option value="guardian">Guardian</option></select></label>
     <label>Signer full name<input required value={name} onChange={e=>setName(e.target.value)}/></label>
     {kind==='guardian'&&<label>Relationship to patient<input required value={relationship} onChange={e=>setRelationship(e.target.value)}/></label>}
@@ -140,6 +147,6 @@ function SignForm({form,onClose,onDone}) {
     <label>Signature</label>{signature?<><img src={signature} alt="Captured signature" style={{maxWidth:'100%'}}/><button type="button" className="btn ghost sm" onClick={()=>setSignature(null)}>Redo signature</button></>:<SignaturePad onSave={setSignature}/>}
     <label>Or HTTPS link to signed document<input type="url" pattern="https://.*" value={documentUrl} onChange={e=>setDocumentUrl(e.target.value)}/></label>
     <label style={{textTransform:'none'}}><input type="checkbox" required style={{width:'auto'}}/> I verified the signer and the recorded consent evidence</label>
-    <ClinicalButton className="btn" type="submit" disabled={busy}>{busy?'Saving…':'Record signed consent'}</ClinicalButton>
+    <ClinicalButton className="btn" type="submit" disabled={busy}>{busy?'Saving…':correcting?'Save correction':'Record signed consent'}</ClinicalButton>
   </form></Modal>
 }

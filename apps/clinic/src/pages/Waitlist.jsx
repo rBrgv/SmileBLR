@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { fmtD, digits, today } from '../lib/format'
+import { waLink } from '../lib/share'
+import { fmtD, today } from '../lib/format'
 import { useToast } from '../components/Toast'
 import Modal from '../components/Modal'
 import { AppointmentForm } from './Appointments'
@@ -48,7 +49,7 @@ export default function Waitlist() {
         <table className="tbl">
           <thead><tr><th>Patient</th><th>Doctor</th><th>Treatment</th><th>Notes</th><th>Added</th><th></th></tr></thead>
           <tbody>{rows.map(r => {
-            const msg = encodeURIComponent(`Hi ${r.patients?.full_name || ''}, this is Smile Bengaluru. A slot just opened up — would you like to come in? Reply here to confirm a time.`)
+            const msg = `Hi ${r.patients?.full_name || ''}, this is Smile Bengaluru. A slot just opened up — would you like to come in? Reply here to confirm a time.`
             return (
               <tr key={r.id}>
                 <td className="link" onClick={() => nav('/patients/' + r.patient_id)}>{r.patients?.full_name}</td>
@@ -57,7 +58,7 @@ export default function Waitlist() {
                 <td>{r.notes || '—'}</td>
                 <td>{fmtD(r.added_date)}</td>
                 <td>
-                  {r.patients?.phone && <a className="btn sm green" target="_blank" rel="noreferrer" href={`https://wa.me/${digits(r.patients?.phone)}?text=${msg}`}>WhatsApp</a>}{' '}
+                  {waLink(r.patients?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(r.patients?.phone, msg)}>WhatsApp</a>}{' '}
                   <button className="btn sm ghost" onClick={() => setBookFor(r)}>Book now</button>{' '}
                   <button className="btn sm ghost danger" onClick={() => remove(r.id)}>Remove</button>
                 </td>

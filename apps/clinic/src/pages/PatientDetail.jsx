@@ -5,10 +5,12 @@ import ClinicalButton from '../components/ClinicalButton'
 import { canWriteClinical, medicinesFor } from '../lib/clinical'
 import PaymentEditor from '../components/PaymentEditor'
 import { billed, received, balance, credit } from '../lib/handoff'
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Fragment, useEffect, useState } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { fmtD, fmtDT, inr, digits, today } from '../lib/format'
+import { fmtD, fmtDT, inr, today } from '../lib/format'
+import { invoiceNo, receiptNo, receiptAmounts } from '../lib/bills'
+import { waLink, invoiceMessage, receiptMessage } from '../lib/share'
 import { useToast } from '../components/Toast'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -21,18 +23,23 @@ import XRayPanel from '../components/XRayPanel'
 import PatientDocumentsPanel from '../components/PatientDocumentsPanel'
 import TreatmentRecordPanel from '../components/TreatmentRecordPanel'
 import PerioChart from '../components/PerioChart'
+import VitalsPanel from '../components/VitalsPanel'
 import { PatientForm } from './Patients'
 import { AppointmentForm, APPT_STATUSES, completeAppointment } from './Appointments'
 import { useRole } from '../lib/RoleContext'
 import { patientAge } from '../lib/age'
+import { vitalsFlags, vitalsSummary } from '../lib/vitals'
 import { logActivity } from '../lib/activityLog'
 
-const TABS = ['Overview', 'Tooth Chart', 'Medical History', 'Appointments', 'Prescriptions', 'Invoices', 'X-Rays', 'Treatment Records', 'Perio Chart', 'Documents', 'Consultations']
+const TABS = ['Overview', 'Vitals & Charts', 'Medical History', 'Appointments', 'Prescriptions', 'Bills', 'X-Rays', 'Treatment Records', 'Perio Chart', 'Documents', 'Consultations']
 
 export default function PatientDetail() {
   const { id } = useParams()
   const [d, setD] = useState(null)
-  const [tab, setTab] = useState(0)
+  // ?tab=Consultations opens straight onto a tab, so other screens can send
+  // staff to the right place on this page.
+  const [search] = useSearchParams()
+  const [tab, setTab] = useState(() => Math.max(0, TABS.indexOf(search.get('tab'))))
   const [modal, setModal] = useState(null) // {type, payload}
   const [reasonPrompt, setReasonPrompt] = useState(null)
   const toast = useToast()
@@ -40,7 +47,7 @@ export default function PatientDetail() {
   const nav = useNavigate()
 
   async function load() {
-    const [p, mh, teeth, appts, rx, inv, docs] = await Promise.all([
+    const [p, mh, teeth, appts, rx, inv, docs, vitals] = await Promise.all([
       sb.from('patients').select('*').eq('id', id).single(),
       sb.from('medical_history').select('*').eq('patient_id', id).order('updated_at', { ascending: false }).limit(1),
       sb.from('tooth_chart').select('*').eq('patient_id', id),
@@ -48,8 +55,9 @@ export default function PatientDetail() {
       sb.from('prescriptions').select('*, staff(full_name)').eq('patient_id', id).order('prescribed_date', { ascending: false }),
       sb.from('invoices').select('*, staff(full_name)').eq('patient_id', id).order('invoice_date', { ascending: false }),
       sb.from('staff').select('*').eq('active', true).eq('role', 'doctor').order('full_name'),
+      sb.from('patient_vitals').select('*').eq('patient_id', id).order('recorded_on', { ascending: false }).order('created_at', { ascending: false }).limit(1),
     ])
-    setD({ p: p.data, mh: mh.data?.[0] || null, teeth: teeth.data ?? [], appts: appts.data ?? [], rx: rx.data ?? [], inv: inv.data ?? [], docs: docs.data ?? [] })
+    setD({ p: p.data, mh: mh.data?.[0] || null, teeth: teeth.data ?? [], appts: appts.data ?? [], rx: rx.data ?? [], inv: inv.data ?? [], docs: docs.data ?? [], vitals: vitals.data?.[0] || null })
   }
   useEffect(() => { load() }, [id])
 
@@ -75,6 +83,13 @@ export default function PatientDetail() {
       {d.mh?.allergies && (
         <div className="allergy-alert">⚠ Allergy: {d.mh.allergies}</div>
       )}
+      {/* A reading worth pausing on belongs in front of whoever opens the
+          record, not two tabs away. */}
+      {d.vitals && vitalsFlags(d.vitals).length > 0 && (
+        <div className="allergy-alert">
+          ⚠ {vitalsFlags(d.vitals).join(' · ')} — BP {vitalsSummary(d.vitals).bp}, pulse {vitalsSummary(d.vitals).pulse} on {fmtD(d.vitals.recorded_on)}
+        </div>
+      )}
       <div className="pd-head">
         <div>
           <h3>{p.full_name}<span className="sub" style={{ marginLeft: '.6rem', fontWeight: 'normal' }}>{p.patient_code}{p.manual_id && ' · file ' + p.manual_id}</span>{(p.tags || []).map(t => <span key={t} className="badge b-partial" style={{ marginLeft: '.5rem' }}>{t}</span>)}</h3>
@@ -90,8 +105,10 @@ export default function PatientDetail() {
         </div>
         <div>
           <button className="btn ghost sm" onClick={() => setModal({ type: 'edit' })}>Edit</button>{' '}
-          <a className="btn ghost sm" target="_blank" rel="noreferrer" href={'/print/patient-label/' + p.id}>Print label</a>{' '}
-          {p.phone && p.phone !== 'N/A' && <a className="btn sm green" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(p.phone)}>WhatsApp</a>}{' '}
+          <a className="btn ghost sm" target="_blank" rel="noreferrer" href={'/print/case-sheet/' + p.id}>Case sheet</a>{' '}
+          <a className="btn ghost sm" target="_blank" rel="noreferrer" href={'/print/treatment-summary/' + p.id}>Summary</a>{' '}
+          <a className="btn ghost sm" target="_blank" rel="noreferrer" href={'/print/patient-label/' + p.id}>Label</a>{' '}
+          {waLink(p.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(p.phone)}>WhatsApp</a>}{' '}
           {role === 'admin' && <button className="btn ghost sm danger" onClick={() => setModal({ type: 'archive' })}>Archive</button>}
         </div>
       </div>
@@ -121,7 +138,10 @@ export default function PatientDetail() {
         </>
       )}
 
-      {tab === 1 && <ToothChart readOnly={!canWriteClinical(role)} teeth={d.teeth} age={age?.age} onSelect={(n, t) => canWriteClinical(role) && setModal({ type: 'tooth', n, t })} />}
+      {tab === 1 && <>
+        <VitalsPanel patientId={id} />
+        <ToothChart readOnly={!canWriteClinical(role)} teeth={d.teeth} age={age?.age} onSelect={(n, t) => canWriteClinical(role) && setModal({ type: 'tooth', n, t })} />
+      </>}
 
       {tab === 2 && <MedicalHistory patientId={id} mh={d.mh} onSaved={load} />}
 
@@ -165,7 +185,7 @@ export default function PatientDetail() {
         </>
       )}
 
-      {tab === 5 && <Ledger inv={d.inv} onNew={() => setModal({ type: 'inv' })} onSaved={load} />}
+      {tab === 5 && <Ledger inv={d.inv} patient={p} onNew={() => setModal({ type: 'inv' })} onEdit={v => setModal({ type: 'inv', payload: v })} onSaved={load} />}
 
       {tab === 6 && <XRayPanel patientId={id} />}
 
@@ -195,7 +215,7 @@ export default function PatientDetail() {
       {modal?.type === 'appt' && <AppointmentForm appointment={modal.payload} patientId={id} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'tooth' && <ToothForm patientId={id} n={modal.n} t={modal.t} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'rx' && <RxForm patientId={id} doctors={d.docs} allergies={d.mh?.allergies} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
-      {modal?.type === 'inv' && <InvoiceForm patientId={id} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
+      {modal?.type === 'inv' && <InvoiceForm patientId={id} invoice={modal.payload} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {reasonPrompt && (
         <CancelReasonDialog status={reasonPrompt.status} onCancel={() => setReasonPrompt(null)}
           onConfirm={reason => { setApptStatus(reasonPrompt.a, reasonPrompt.status, reason); setReasonPrompt(null) }} />
@@ -379,7 +399,15 @@ function LinkFamilyForm({ excludeId, onClose, onDone }) {
 
 // Chronological account statement — running balance, oldest first, so a
 // patient's "what do I owe" question can be answered from one screen.
-function Ledger({ inv, onNew, onSaved }) {
+function Ledger({ inv, patient, onNew, onEdit, onSaved }) {
+  const [receipts, setReceipts] = useState(null)
+  const toast = useToast()
+  useEffect(() => {
+    if (!inv.length) return setReceipts([])
+    sb.from('invoice_payment_changes').select('*').in('invoice_id', inv.map(v => v.id)).order('receipt_number')
+      .then(({ data, error }) => { if (error) toast(error.message); setReceipts(data ?? []) })
+  }, [inv])
+
   const totalBilled = inv.reduce((a, v) => a + billed(v), 0)
   const totalPaid = inv.reduce((a, v) => a + received(v), 0)
   const outstanding = inv.reduce((a, v) => a + balance(v), 0)
@@ -399,18 +427,46 @@ function Ledger({ inv, onNew, onSaved }) {
             <div className="stat pink"><b>{inr(outstanding)}</b><span>Balance due</span></div>
             {inCredit > 0 && <div className="stat gold"><b>{inr(inCredit)}</b><span>Credit due to patient</span></div>}
           </div>
+          {!waLink(patient?.phone) && <p className="sub">No usable phone number on file, so bills cannot be sent on WhatsApp from here.</p>}
           <table className="tbl">
-            <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th>Balance due</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Invoice #</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th>Balance due</th><th></th></tr></thead>
             <tbody>{asc.map(v => {
               running += balance(v)
+              const mine = (receipts || []).filter(r => r.invoice_id === v.id)
               return (
-                <tr key={v.id}>
-                  <td>{fmtD(v.invoice_date)}</td><td>{inr(billed(v))}</td><td>{v.payment_method || '—'}</td>
-                  <td>{v.staff?.full_name || '—'}</td>
-                  <td><PaymentEditor invoice={v} onDone={onSaved} /></td>
-                  <td>{inr(running)}</td>
-                  <td><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a></td>
-                </tr>
+                <Fragment key={v.id}>
+                  <tr>
+                    <td>{fmtD(v.invoice_date)}</td><td>{invoiceNo(v)}</td><td>{inr(billed(v))}</td><td>{v.payment_method || '—'}</td>
+                    <td>{v.staff?.full_name || '—'}</td>
+                    <td><PaymentEditor invoice={v} onDone={onSaved} /></td>
+                    <td>{inr(running)}</td>
+                    <td>
+                      <button className="btn sm ghost" onClick={() => onEdit(v)}>Edit</button>{' '}
+                      <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a>{' '}
+                      {waLink(patient?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(patient.phone, invoiceMessage(v, patient))}>Share</a>}
+                    </td>
+                  </tr>
+                  {/* Each payment taken against the invoice is its own numbered
+                      receipt, printable and shareable long after the fact. */}
+                  {mine.map(r => {
+                    const a = receiptAmounts(v, r)
+                    const got = a.refunded ? (a.prior ?? a.total) : a.collected == null ? a.toDate : Math.abs(a.collected)
+                    return (
+                      <tr key={r.id} className="sub-row">
+                        <td>{fmtD(r.created_at)}</td>
+                        <td colSpan={4}>
+                          {receiptNo(r)} · {a.refunded ? 'refunded' : a.collected != null && a.collected < 0 ? 'returned' : 'received'} {inr(got)}
+                          {r.payment_method ? ' · ' + r.payment_method : ''}{r.note ? ' · ' + r.note : ''}
+                        </td>
+                        <td colSpan={2}>{a.credit > 0 ? 'Credit ' + inr(a.credit) : 'Balance ' + inr(a.balance)}</td>
+                        <td>
+                          <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/receipt/' + r.id}>Receipt</a>{' '}
+                          {waLink(patient?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(patient.phone, receiptMessage(v, patient, r))}>Share</a>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </Fragment>
               )
             })}</tbody>
           </table>

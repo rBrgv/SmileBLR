@@ -58,6 +58,9 @@ font-size:.78rem;padding:.55rem 1.25rem;border-left:3px solid transparent;text-d
 .tbl td{padding:.6rem .8rem;font-size:.78rem;border-top:1px solid var(--rule);vertical-align:top}
 .tbl tr:hover td{background:#faf8f4}
 .tbl th.sortable{cursor:pointer;user-select:none}
+/* A receipt belongs to the invoice above it, so it reads as a subordinate line. */
+.tbl tr.sub-row td{border-top:1px dotted var(--rule);color:var(--mid);font-size:.72rem;padding-top:.45rem;padding-bottom:.45rem}
+.tbl tr.sub-row td:first-child{padding-left:1.6rem}
 .tbl th.sortable:hover{background:var(--purple-dark,#5a3d8a)}
 .link{color:var(--purple);cursor:pointer;text-decoration:underline;transition:color var(--ease)}
 .link:hover{color:var(--pink)}
