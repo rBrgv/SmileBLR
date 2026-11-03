@@ -1,4 +1,5 @@
 import PaymentEditor from '../components/PaymentEditor'
+import InvoiceForm from '../components/InvoiceForm'
 import { received, balance, fetchAll } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -8,6 +9,8 @@ import { useToast } from '../components/Toast'
 
 export default function Invoices() {
   const [rows, setRows] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const [doctors, setDoctors] = useState([])
   const toast = useToast()
   const nav = useNavigate()
 
@@ -19,6 +22,11 @@ export default function Invoices() {
   }
 
   useEffect(() => { load() }, [])
+  // Needed only when an invoice is opened for editing, but cheap and small.
+  useEffect(() => {
+    sb.from('staff').select('id, full_name').eq('role', 'doctor').eq('active', true).order('full_name')
+      .then(({ data }) => setDoctors(data ?? []))
+  }, [])
 
   if (!rows) return <div className="empty">Loading…</div>
   const pend = rows.reduce((a, r) => a + balance(r), 0)
@@ -46,10 +54,19 @@ export default function Invoices() {
               <td>{v.payment_method || '—'}</td>
               <td>{v.staff?.full_name || '—'}</td>
               <td><PaymentEditor invoice={v} onDone={load} /></td>
-              <td><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a></td>
+              <td>
+                <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>{' '}
+                <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/invoice/' + v.id}>Print</a>
+              </td>
             </tr>
           ))}</tbody>
         </table>
+      )}
+      {editing && (
+        <InvoiceForm
+          patientId={editing.patient_id} invoice={editing} doctors={doctors}
+          onClose={() => setEditing(null)}
+          onDone={() => { setEditing(null); load() }} />
       )}
     </>
   )

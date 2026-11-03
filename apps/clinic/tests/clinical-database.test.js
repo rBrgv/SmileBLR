@@ -38,7 +38,8 @@ test('clinical workflows preserve legacy data, validate writes, and enforce role
   await db.query("UPDATE medical_history SET allergies='Updated history' WHERE id=$1",[history])
   assert.equal((await db.query('SELECT history_snapshot FROM consultations WHERE id=$1',[visit.id])).rows[0].history_snapshot.allergies,'Recorded allergy')
   await db.query("UPDATE consultations SET diagnosis='Rewritten' WHERE id=$1",[visit.id])
-  assert.equal((await db.query('SELECT diagnosis FROM consultations WHERE id=$1',[visit.id])).rows[0].diagnosis,'Working diagnosis')
+  assert.equal((await db.query('SELECT diagnosis FROM consultations WHERE id=$1',[visit.id])).rows[0].diagnosis,'Rewritten','026: a note is correctable in place')
+  assert.equal((await db.query("SELECT old_row->>'diagnosis' AS was FROM record_changes WHERE table_name='consultations' AND record_id=$1",[visit.id])).rows[0].was,'Working diagnosis','and what it replaced is kept')
   const amendment=(await db.query("INSERT INTO consultation_amendments(consultation_id,reason,note) VALUES($1,'Correction','Dated addendum') RETURNING *",[visit.id])).rows[0]
   assert.equal(amendment.recorded_by,staff.doctor)
   await db.query('DELETE FROM consultation_amendments WHERE id=$1',[amendment.id])
@@ -51,7 +52,9 @@ test('clinical workflows preserve legacy data, validate writes, and enforce role
   const invoice=(await db.query('INSERT INTO invoices(patient_id,amount,tax_amount,items) VALUES($1,1,999,$2) RETURNING *',[patient,JSON.stringify(lines)])).rows[0]
   assert.equal(Number(invoice.amount),2400);assert.equal(Number(invoice.tax_amount),342)
   assert.deepEqual(invoiceTotals(lines),{net:2400,tax:342,total:2742})
-  await assert.rejects(db.query('UPDATE invoices SET items=$1 WHERE id=$2',[JSON.stringify([{...lines[0],unit_price:2000}]),invoice.id]),/cannot be edited/)
+  await db.query('UPDATE invoices SET items=$1 WHERE id=$2',[JSON.stringify([{...lines[0],unit_price:2000}]),invoice.id])
+  assert.equal(Number((await db.query('SELECT amount FROM invoices WHERE id=$1',[invoice.id])).rows[0].amount),3900,'026: an issued invoice re-totals when edited')
+  assert.equal((await db.query("SELECT count(*)::int n FROM record_changes WHERE table_name='invoices' AND record_id=$1",[invoice.id])).rows[0].n,1,'and the previous charges are kept')
   await assert.rejects(db.query('INSERT INTO invoices(patient_id,amount,items) VALUES($1,1,$2)',[patient,JSON.stringify([{...lines[0],discount:99999}])]),/Invalid invoice line/)
   const template=(await db.query("INSERT INTO consent_templates(procedure,statement) VALUES('Test procedure','Clinic approved test wording') RETURNING *")).rows[0]
   assert.equal(template.approved_by,staff.doctor)
@@ -60,7 +63,8 @@ test('clinical workflows preserve legacy data, validate writes, and enforce role
   await assert.rejects(db.query("UPDATE consent_forms SET consent_given=true,signer_kind='guardian',signer_name='Guardian',guardian_relationship='Parent' WHERE id=$1",[consent.id]),/signature or provide/)
   await assert.rejects(db.query("UPDATE consent_forms SET consent_given=true,signer_kind='patient',signer_name='Patient',document_url='https://example.invalid/signed.pdf' WHERE id=$1",[consent.id]),/guardian consent/)
   await db.query("UPDATE consent_forms SET consent_given=true,signer_kind='guardian',signer_name='Guardian',guardian_relationship='Parent',document_url='https://example.invalid/signed.pdf' WHERE id=$1",[consent.id])
-  await assert.rejects(db.query("UPDATE consent_forms SET statement='Rewritten' WHERE id=$1",[consent.id]),/cannot be rewritten/)
+  await db.query("UPDATE consent_forms SET statement='Rewritten' WHERE id=$1",[consent.id])
+  assert.equal((await db.query("SELECT old_row->>'statement' AS was FROM record_changes WHERE table_name='consent_forms' AND record_id=$1",[consent.id])).rows[0].was,template.statement,'026: consent is correctable, and the signed wording is kept')
   const record=(await db.query("INSERT INTO treatment_records(patient_id,notes,follow_up_required) VALUES($1,'Clinical note',true) RETURNING id",[patient])).rows[0].id
   for(const role of ['receptionist','assistant']){
    await as(role)

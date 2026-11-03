@@ -1,5 +1,5 @@
 import { lineTotals } from '../lib/clinical'
-import { received, balance } from '../lib/handoff'
+import { received, balance, credit } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -33,7 +33,12 @@ export default function PrintInvoice() {
       {inv.tax_amount ? <div className="print-row"><b>Tax</b><span>{inr(inv.tax_amount)}</span></div> : null}
       <div className="print-amount">{inr(total)}</div>
       <div className="print-row"><b>Net received</b><span>{inv.amount_paid == null && inv.payment_status === 'partial' ? 'Needs reconciliation' : inr(received(inv))}</span></div>
-      <div className="print-row"><b>Balance due</b><span>{inv.amount_paid == null && inv.payment_status === 'partial' ? 'Needs reconciliation' : inr(balance(inv))}</span></div>
+      <div className="print-row">
+        <b>{credit(inv) > 0 ? 'Credit due to patient' : 'Balance due'}</b>
+        <span>{inv.amount_paid == null && inv.payment_status === 'partial'
+          ? 'Needs reconciliation'
+          : inr(credit(inv) > 0 ? credit(inv) : balance(inv))}</span>
+      </div>
       <div className="print-signature">
         <div>Authorized signature</div>
         <div>Patient signature</div>

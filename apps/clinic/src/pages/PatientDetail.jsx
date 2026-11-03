@@ -4,7 +4,7 @@ import InvoiceForm from '../components/InvoiceForm'
 import ClinicalButton from '../components/ClinicalButton'
 import { canWriteClinical, medicinesFor } from '../lib/clinical'
 import PaymentEditor from '../components/PaymentEditor'
-import { billed, received, balance } from '../lib/handoff'
+import { billed, received, balance, credit } from '../lib/handoff'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
@@ -383,6 +383,7 @@ function Ledger({ inv, onNew, onSaved }) {
   const totalBilled = inv.reduce((a, v) => a + billed(v), 0)
   const totalPaid = inv.reduce((a, v) => a + received(v), 0)
   const outstanding = inv.reduce((a, v) => a + balance(v), 0)
+  const inCredit = inv.reduce((a, v) => a + credit(v), 0)
   const asc = [...inv].sort((a, b) => new Date(a.invoice_date) - new Date(b.invoice_date))
   let running = 0
 
@@ -396,6 +397,7 @@ function Ledger({ inv, onNew, onSaved }) {
             <div className="stat"><b>{inr(totalBilled)}</b><span>Total billed</span></div>
             <div className="stat green"><b>{inr(totalPaid)}</b><span>Paid</span></div>
             <div className="stat pink"><b>{inr(outstanding)}</b><span>Balance due</span></div>
+            {inCredit > 0 && <div className="stat gold"><b>{inr(inCredit)}</b><span>Credit due to patient</span></div>}
           </div>
           <table className="tbl">
             <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Doctor</th><th>Status</th><th>Balance due</th><th></th></tr></thead>

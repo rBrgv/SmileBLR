@@ -16,6 +16,9 @@ export function appointmentTimes(date, time, frequency, count) {
 export const billed = v => Math.round((Number(v.amount) + Number(v.tax_amount || 0)) * 100) / 100
 export const received = v => v.amount_paid == null ? (v.payment_status === 'paid' ? billed(v) : 0) : Number(v.amount_paid)
 export const balance = v => v.payment_status === 'refunded' ? 0 : Math.max(0, Math.round((billed(v) - received(v)) * 100) / 100)
+// Editing an invoice downwards can leave the patient in credit. That is money
+// owed back, not a balance of zero, so it is reported separately.
+export const credit = v => v.payment_status === 'refunded' ? 0 : Math.max(0, Math.round((received(v) - billed(v)) * 100) / 100)
 export async function fetchAll(makeQuery) {
   const rows = []
   for (let offset = 0; ; ) {

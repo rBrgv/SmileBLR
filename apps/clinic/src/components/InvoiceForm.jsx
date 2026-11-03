@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { sb } from '../lib/supabase'
-import { fetchAll } from '../lib/handoff'
+import { fetchAll, received } from '../lib/handoff'
 import { emptyInvoiceLine, invoiceTotals, lineTotals } from '../lib/clinical'
 import { inr } from '../lib/format'
 import Modal from './Modal'
 import ToothSelect from './ToothSelect'
 import { useToast } from './Toast'
-export default function InvoiceForm({patientId,doctors,onClose,onDone}) {
-  const [items,setItems]=useState([emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(''),[doctor,setDoctor]=useState(''),[notes,setNotes]=useState(''),[busy,setBusy]=useState(false)
+export default function InvoiceForm({patientId,doctors,invoice,onClose,onDone}) {
+  // An issued invoice is editable: 026 removed the freeze, the database
+  // re-totals from the lines, and the previous version is kept automatically.
+  const editing=Boolean(invoice)
+  const [items,setItems]=useState(invoice?.items?.length?invoice.items.map(i=>({...emptyInvoiceLine(),...i})):[emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(invoice?.source_plan_id||''),[doctor,setDoctor]=useState(invoice?.doctor_id||''),[notes,setNotes]=useState(invoice?.notes||''),[busy,setBusy]=useState(false)
   const lock=useRef(false),toast=useToast(),totals=invoiceTotals(items)
   useEffect(()=>{
     Promise.all([
@@ -20,11 +23,15 @@ export default function InvoiceForm({patientId,doctors,onClose,onDone}) {
   const update=(i,k,v)=>setItems(rows=>rows.map((r,j)=>i===j?{...r,[k]:v}:r))
   async function save(e){e.preventDefault();if(lock.current)return;lock.current=true;setBusy(true)
     try{
-      const {error}=await sb.from('invoices').insert({patient_id:patientId,items,amount:totals.net,tax_amount:totals.tax,source_plan_id:plan||null,doctor_id:doctor||null,notes:notes.trim()||null})
-      if(error)throw error;toast('Invoice created');onDone()
+      const row={items,amount:totals.net,tax_amount:totals.tax,source_plan_id:plan||null,doctor_id:doctor||null,notes:notes.trim()||null}
+      const {error}=editing
+        ? await sb.from('invoices').update(row).eq('id',invoice.id)
+        : await sb.from('invoices').insert({patient_id:patientId,...row})
+      if(error)throw error;toast(editing?'Invoice updated':'Invoice created');onDone()
     }catch(e){toast(e.message)}finally{lock.current=false;setBusy(false)}
   }
-  return <Modal title="New itemised invoice" onClose={()=>!busy&&onClose()}><form onSubmit={save}>
+  return <Modal title={editing?'Edit invoice':'New itemised invoice'} onClose={()=>!busy&&onClose()}><form onSubmit={save}>
+    {editing&&received(invoice)>0&&<p>{inr(received(invoice))} has already been received against this invoice. Correcting the charges here does not change what was paid — settle any difference in the payment editor.</p>}
     <label>Start from an approved estimate<select value={plan} onChange={e=>usePlan(e.target.value)}><option value="">Enter procedures manually</option>{plans.map(p=><option key={p.id} value={p.id}>{p.plan_description||p.id}</option>)}</select></label>
     <label>Add recorded treatment<select value="" onChange={e=>addRecord(e.target.value)}><option value="">Choose treatment</option>{records.map(r=><option key={r.id} value={r.id}>{r.performed_date} · {r.treatments?.name||'Treatment'} · Tooth {r.tooth_number||'—'}</option>)}</select></label>
     <p>Review charges before issuing. Adding a treatment here does not determine whether it was previously billed.</p>
@@ -39,6 +46,6 @@ export default function InvoiceForm({patientId,doctors,onClose,onDone}) {
     <label>Treating doctor<select value={doctor} onChange={e=>setDoctor(e.target.value)}><option value="">—</option>{doctors.map(d=><option key={d.id} value={d.id}>{d.full_name}</option>)}</select></label>
     <label>Notes<textarea value={notes} onChange={e=>setNotes(e.target.value)}/></label>
     <p>After discounts: {inr(totals.net)} · Tax: {inr(totals.tax)} · Total: <b>{inr(totals.total)}</b></p>
-    <button className="btn" disabled={busy} type="submit">{busy?'Saving…':'Issue invoice'}</button>
+    <button className="btn" disabled={busy} type="submit">{busy?'Saving…':editing?'Save changes':'Issue invoice'}</button>
   </form></Modal>
 }

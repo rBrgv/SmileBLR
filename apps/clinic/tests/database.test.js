@@ -54,8 +54,11 @@ test('migrations, atomic imports, audited payments, and staff RLS', async () => 
     assert.equal(Number(row.amount_paid), 4000); assert.equal(row.payment_status, 'partial')
     await assert.rejects(pay(5000, 0), /another staff/)
     await assert.rejects(pay(5000, null), /another staff/)
-    await assert.rejects(pay(12000, 1), /Invalid received/)
-    await assert.rejects(db.query("UPDATE invoices SET payment_status='paid' WHERE id=$1", [inv]), /payment action/)
+    await assert.rejects(pay(-1, 1), /Invalid received/)
+    // 026: a direct correction is allowed again; the record_invoice_payment
+    // path still exists for the screens, and the change is kept either way.
+    await db.query("UPDATE invoices SET payment_status='paid' WHERE id=$1", [inv])
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM record_changes WHERE table_name='invoices' AND record_id=$1", [inv])).rows[0].n > 0, true)
     await pay(11800, 1)
     await pay(0, 2, true)
     assert.equal((await db.query('SELECT count(*)::int AS n FROM invoice_payment_changes')).rows[0].n, 3)
