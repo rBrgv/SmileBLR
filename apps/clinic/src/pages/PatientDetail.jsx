@@ -90,7 +90,9 @@ export default function PatientDetail() {
         </div>
         <div>
           <button className="btn ghost sm" onClick={() => setModal({ type: 'edit' })}>Edit</button>{' '}
-          {p.phone && <a className="btn sm green" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(p.phone)}>WhatsApp</a>}
+          <a className="btn ghost sm" target="_blank" rel="noreferrer" href={'/print/patient-label/' + p.id}>Print label</a>{' '}
+          {p.phone && p.phone !== 'N/A' && <a className="btn sm green" target="_blank" rel="noreferrer" href={'https://wa.me/' + digits(p.phone)}>WhatsApp</a>}{' '}
+          {role === 'admin' && <button className="btn ghost sm danger" onClick={() => setModal({ type: 'archive' })}>Archive</button>}
         </div>
       </div>
 
@@ -176,6 +178,20 @@ export default function PatientDetail() {
       {tab === 9 && <PatientDocumentsPanel patientId={id} />}
 
       {modal?.type === 'edit' && <PatientForm patient={p} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
+      {modal?.type === 'archive' && (
+        <ConfirmDialog
+          title={'Archive ' + p.patient_code + '?'}
+          body="The patient disappears from the list and from search, and can be restored from Trash. A patient with invoices or treatment records cannot be archived — merge them into the right record instead."
+          confirmLabel="Archive"
+          onCancel={() => setModal(null)}
+          onConfirm={async () => {
+            const { error } = await sb.rpc('archive_patient', { p_id: p.id })
+            if (error) { setModal(null); return toast('Error: ' + error.message) }
+            logActivity('patient.archived', 'patients', p.id, `Archived ${p.patient_code}`)
+            toast('Patient archived')
+            nav('/patients')
+          }} />
+      )}
       {modal?.type === 'appt' && <AppointmentForm appointment={modal.payload} patientId={id} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'tooth' && <ToothForm patientId={id} n={modal.n} t={modal.t} doctors={d.docs} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}
       {modal?.type === 'rx' && <RxForm patientId={id} doctors={d.docs} allergies={d.mh?.allergies} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}

@@ -28,6 +28,7 @@ import PrintInvoice from './pages/PrintInvoice'
 import PrintPrescription from './pages/PrintPrescription'
 import PrintConsent from './pages/PrintConsent'
 import PrintPostOp from './pages/PrintPostOp'
+import PrintPatientLabel from './pages/PrintPatientLabel'
 import PrintDaySheet from './pages/PrintDaySheet'
 import PrintTreatmentPlan from './pages/PrintTreatmentPlan'
 import ComplianceLogs from './pages/ComplianceLogs'
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/print/prescription/:id" element={<PrintPrescription />} />
           <Route path="/print/consent/:id" element={<PrintConsent />} />
           <Route path="/print/post-op/:id" element={<PrintPostOp />} />
+          <Route path="/print/patient-label/:id" element={<PrintPatientLabel />} />
           <Route path="/print/day/:date" element={<PrintDaySheet />} />
           <Route path="/print/plan/:id" element={<PrintTreatmentPlan />} />
           <Route element={<Layout />}>

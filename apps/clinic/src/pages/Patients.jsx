@@ -31,7 +31,7 @@ export function PatientForm({ patient = {}, onDone, onClose }) {
     const timer = setTimeout(async () => {
       const { data } = await sb.from('patients')
         .select('id, full_name, patient_code, manual_id, phone, approx_age, approx_age_recorded_on, date_of_birth')
-        .is('merged_into', null).ilike('full_name', name).limit(5)
+        .is('merged_into', null).is('deleted_at', null).ilike('full_name', name).limit(5)
       const typed = String(f.age_today).trim() === '' ? null : parseInt(f.age_today, 10)
       setSimilar((data ?? []).filter(c => {
         if (typed === null) return true
@@ -162,7 +162,7 @@ export default function Patients() {
   useEffect(() => {
     let active = true
     const timer = setTimeout(async () => {
-      let query = sb.from('patients').select('*', { count: 'exact' }).is('merged_into', null).order(sort.field, { ascending: sort.asc }).order('id')
+      let query = sb.from('patients').select('*', { count: 'exact' }).is('merged_into', null).is('deleted_at', null).order(sort.field, { ascending: sort.asc }).order('id')
       const term = q.trim().replace(/[\\%_]/g, c => '\\' + c)
       if (term) {
         const pattern = JSON.stringify('%' + term + '%')

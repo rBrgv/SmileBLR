@@ -16,6 +16,7 @@ const TYPES = [
   { key: 'consent_forms', label: 'Consent Forms', select: '*, patients(id,full_name)', title: r => `${r.patients?.full_name || '—'} — ${r.procedure}` },
   { key: 'insurance_claims', label: 'Insurance Claims', select: '*, patients(id,full_name)', title: r => `${r.patients?.full_name || '—'} — ${r.insurer_name || 'Claim'}` },
   { key: 'patient_documents', label: 'Patient Documents', select: '*, patients(id,full_name)', title: r => `${r.patients?.full_name || '—'} — ${r.file_name || r.doc_type}` },
+  { key: 'patients', label: 'Patients', select: '*', title: r => `${r.patient_code} — ${r.full_name}` },
 ]
 
 export default function Trash() {

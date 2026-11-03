@@ -35,7 +35,7 @@ function PatientQuickSearch() {
       const term = q.trim().replace(/[\\%_]/g, c => '\\' + c)
       const pattern = JSON.stringify('%' + term + '%')
       const cols = 'id,full_name,phone,patient_code,manual_id,date_of_birth,approx_age,approx_age_recorded_on'
-      const { data } = await sb.from('patients').select(cols).is('merged_into', null)
+      const { data } = await sb.from('patients').select(cols).is('merged_into', null).is('deleted_at', null)
         .or(`full_name.ilike.${pattern},phone.ilike.${pattern},patient_code.ilike.${pattern},manual_id.ilike.${pattern}`)
         .limit(8)
       const merged = data ?? []
