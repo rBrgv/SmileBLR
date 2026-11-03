@@ -1,3 +1,4 @@
+import { statusLabel } from '../lib/status'
 import { canWriteClinical } from '../lib/clinical'
 import ClinicalButton from '../components/ClinicalButton'
 import { useEffect, useState } from 'react'
@@ -13,7 +14,7 @@ import SignaturePad from '../components/SignaturePad'
 import { logActivity } from '../lib/activityLog'
 
 export const PLAN_STATUSES = ['proposed', 'accepted', 'in_progress', 'completed', 'cancelled']
-const STAGE_STATUSES = ['pending', 'scheduled', 'in_progress', 'completed']
+const STAGE_STATUSES = ['pending', 'scheduled', 'in_progress', 'completed', 'not_treated']
 
 export default function TreatmentPlans() {
   const role = useRole()
@@ -65,7 +66,7 @@ export default function TreatmentPlans() {
         <input placeholder="Search patient…" value={q} onChange={e => setQ(e.target.value)} />
         <select value={st} onChange={e => setSt(e.target.value)}>
           <option value="">All statuses</option>
-          {PLAN_STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+          {PLAN_STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
       </div>
       {!view.length ? <div className="empty">No treatment plans yet.</div> : (
