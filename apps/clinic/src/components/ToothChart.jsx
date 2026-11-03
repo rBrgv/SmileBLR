@@ -5,8 +5,8 @@ const CONDS = ['Decayed', 'Filled', 'Missing', 'Crowned', 'RootCanal', 'Implant'
 
 export { CONDS as TOOTH_CONDITIONS }
 
-export default function ToothChart({ teeth, dateOfBirth, onSelect, readOnly = false }) {
-  const [view, setView] = useState(() => defaultDentition(dateOfBirth))
+export default function ToothChart({ teeth, age, onSelect, readOnly = false }) {
+  const [view, setView] = useState(() => defaultDentition(age))
   const map = {}
   teeth.forEach(t => { map[t.tooth_number] = t })
   // Recorded-tooth counts per chart, so data on the hidden chart isn't forgotten.

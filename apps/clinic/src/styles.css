@@ -65,7 +65,7 @@ font-size:.78rem;padding:.55rem 1.25rem;border-left:3px solid transparent;text-d
 .b-new,.b-pending,.b-proposed,.b-sent{background:var(--pink)}
 .b-confirmed,.b-scheduled,.b-accepted,.b-in_progress{background:var(--purple)}
 .b-completed,.b-paid,.b-delivered{background:var(--green)}
-.b-cancelled,.b-no_show,.b-rejected{background:var(--soft)}
+.b-cancelled,.b-no_show,.b-rejected,.b-not_treated{background:var(--soft)}
 .b-fail{background:var(--red)}
 .b-partial,.b-under_review{background:var(--gold)}
 .bar{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}

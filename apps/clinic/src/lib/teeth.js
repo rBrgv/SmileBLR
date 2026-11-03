@@ -41,8 +41,7 @@ export function toothLabel(n) {
 }
 
 // Under 12 is still mostly primary / mixed dentition, so open the child chart first.
-export function defaultDentition(dateOfBirth) {
-  if (!dateOfBirth) return 'adult'
-  const age = (Date.now() - new Date(dateOfBirth)) / (365.25 * 24 * 3600 * 1000)
+export function defaultDentition(age) {
+  if (age == null) return 'adult'
   return age < 12 ? 'child' : 'adult'
 }
