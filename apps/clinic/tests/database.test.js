@@ -19,7 +19,9 @@ test('migrations, atomic imports, audited payments, and staff RLS', async () => 
     }
     const legacy = (await db.query('SELECT payment_status, amount_paid FROM invoices ORDER BY payment_status')).rows
     assert.deepEqual(legacy.map(v => [v.payment_status, v.amount_paid == null ? null : Number(v.amount_paid)]), [['paid',118],['partial',null],['refunded',0]])
-    await db.exec('DELETE FROM invoices')
+    // 029 raises a receipt for the legacy paid invoice above, which now
+    // references it, so the receipts go before the invoices.
+    await db.exec('DELETE FROM invoice_payment_changes; DELETE FROM invoices')
     await db.exec(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
       GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;`)
     const ids = { admin: '00000000-0000-0000-0000-000000000001', doctor: '00000000-0000-0000-0000-000000000002', receptionist: '00000000-0000-0000-0000-000000000003', assistant: '00000000-0000-0000-0000-000000000004', unlinked: '00000000-0000-0000-0000-000000000005', inactive: '00000000-0000-0000-0000-000000000006' }

@@ -126,7 +126,16 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid signature' })
 
     const body = JSON.parse(rawBody.toString('utf8'))
-    const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+    // One Meta app can carry several numbers, and this app also serves another
+    // business, so a payload here is not necessarily for the clinic. Act only
+    // on messages sent to the clinic's own number, and acknowledge the rest so
+    // Meta does not retry them.
+    const value = body?.entry?.[0]?.changes?.[0]?.value
+    const toNumberId = value?.metadata?.phone_number_id
+    if (toNumberId && process.env.WA_PHONE_NUMBER_ID && toNumberId !== process.env.WA_PHONE_NUMBER_ID)
+      return res.status(200).json({ received: true, ignored: 'another number on this app' })
+
+    const message = value?.messages?.[0]
     const rawText = (message && replyText(message) || '').trim()
     if (!rawText) return res.status(200).json({ received: true })
     const from = String(message.from).replace(/\D/g, '')
