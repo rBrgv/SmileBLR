@@ -41,6 +41,7 @@ import DataExport from './pages/DataExport'
 import PatientImport from './pages/PatientImport'
 import Campaigns from './pages/Campaigns'
 import ClinicSettings from './pages/ClinicSettings'
+import WhatsAppInbox from './pages/WhatsAppInbox'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = loading
@@ -99,6 +100,7 @@ export default function App() {
             <Route path="/patient-import" element={<PatientImport />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/clinic-settings" element={<ClinicSettings />} />
+            <Route path="/whatsapp" element={<WhatsAppInbox />} />
           </Route>
         </Routes>
       </RoleProvider>
