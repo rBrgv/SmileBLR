@@ -5,6 +5,14 @@ import './clinic-time.js'
 import { getOpenSlots, isSlotFree } from './slots.js'
 import { sendText } from './wa.js'
 
+// The model is told to escalate anything medical and does not always do so — a
+// message about bleeding gums was filed as an ordinary enquiry. So the words
+// that mean "a person should look at this" are matched here, outside the
+// model, and raise an escalation regardless. It errs towards notifying staff:
+// a false alarm costs a glance, a missed one costs a patient.
+const URGENT = /\b(pain|painful|ache|aching|toothache|bleed(ing|s)?|blood|swell(ing|s)?|swollen|fever|pus|abscess|infect(ed|ion)|broken|broke|chipped|fracture[d]?|knocked|trauma|accident|injur(y|ed)|emergency|urgent|numb(ness)?|allerg(y|ic)|reaction|can'?t (open|swallow|breathe|eat|sleep))\b/i
+export const isUrgent = text => URGENT.test(String(text ?? ''))
+
 async function findDoctor(admin, name) {
   if (!name) return null
   const { data } = await admin.from('staff').select('id, full_name').eq('role', 'doctor').eq('active', true).ilike('full_name', `%${name}%`).limit(1).maybeSingle()

@@ -21,7 +21,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { sendText } from './_lib/wa.js'
 import { chat } from './_lib/ai.js'
-import { buildTools, runTool } from './_lib/booking-tools.js'
+import { buildTools, runTool, isUrgent } from './_lib/booking-tools.js'
 
 const CONFIRM_WORDS = ['confirm', 'yes', 'y', 'ok', 'okay', '1']
 const CANCEL_WORDS = ['cancel', 'no', 'n', '2']
@@ -60,8 +60,19 @@ async function runBookingBot(admin, phone, text) {
 
   const { data: convo } = await admin.from('wa_conversations').select('*').eq('phone', phone).maybeSingle()
   const history = convo?.history ?? []
-  const systemPrompt = await buildSystemPrompt(admin, patient)
+  let systemPrompt = await buildSystemPrompt(admin, patient)
   const tools = buildTools(patient)
+
+  // A symptom reaches staff whatever the model decides. One escalation per
+  // half hour per number, so a patient describing it over five messages does
+  // not page the front desk five times.
+  if (isUrgent(text)) {
+    const since = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    const { data: recent } = await admin.from('bookings').select('id').eq('phone', phone)
+      .like('reason', '[NEEDS STAFF]%').gte('created_at', since).limit(1)
+    if (!recent?.length) await runTool(admin, patient, phone, 'escalate', { reason: `Message: "${text.slice(0, 300)}"` })
+    systemPrompt += ' The front desk has already been alerted about this message. Do not give medical advice or diagnose; tell the patient staff will contact them shortly, and say to call the clinic or go to an emergency department if it is severe.'
+  }
 
   let messages = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: text }]
   let reply = null
