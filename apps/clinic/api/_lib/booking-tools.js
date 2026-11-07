@@ -170,11 +170,26 @@ export async function runTool(admin, patient, phone, name, args) {
   }
 
   if (name === 'escalate') {
+    // The record comes first. A WhatsApp alert to staff only arrives if that
+    // staff number has messaged the clinic in the last 24 hours, and it is
+    // dropped silently otherwise, so on its own it cannot be what the patient
+    // is told was done. A row on the Bookings screen is always seen.
+    const { error: leadError } = await admin.from('bookings').insert({
+      patient_name: patient?.full_name || 'WhatsApp enquiry', phone,
+      reason: '[NEEDS STAFF] ' + String(args.reason || 'Escalated from WhatsApp').slice(0, 500),
+      lead_source: 'whatsapp_direct', status: 'new',
+    })
     const { data: settings } = await admin.from('clinic_settings').select('escalation_phone').eq('id', 1).maybeSingle()
+    let alerted = false
     if (settings?.escalation_phone) {
-      await sendText(settings.escalation_phone, `[ESCALATE] ${patient?.full_name || phone}: ${args.reason}`)
+      const sent = await sendText(settings.escalation_phone, `[ESCALATE] ${patient?.full_name || phone}: ${args.reason}`)
+      alerted = Boolean(sent?.ok)
     }
-    return { ok: true }
+    // Only claim what actually happened, so the assistant cannot reassure a
+    // patient that staff were told when nothing was recorded or sent.
+    return leadError && !alerted
+      ? { ok: false, error: 'Staff could not be notified. Ask the patient to call the clinic.' }
+      : { ok: true, recorded_for_front_desk: !leadError, staff_alerted_on_whatsapp: alerted }
   }
 
   return { ok: false, error: 'Tool not available for this conversation.' }
