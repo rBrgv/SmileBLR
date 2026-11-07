@@ -7,6 +7,7 @@ import Modal from '../components/Modal'
 import StatusSelect from '../components/StatusSelect'
 import VoiceNote from '../components/VoiceNote'
 import ConfirmDialog from '../components/ConfirmDialog'
+import PatientPicker from '../components/PatientPicker'
 import CancelReasonDialog from '../components/CancelReasonDialog'
 
 import { appointmentTimes, localDate, fetchAll } from '../lib/handoff'
@@ -25,7 +26,6 @@ export async function completeAppointment(patientId) {
 }
 
 export function AppointmentForm({ patientId, defaultDate, appointment, onDone, onClose }) {
-  const [patients, setPatients] = useState([])
   const [doctors, setDoctors] = useState([])
   const [treatments, setTreatments] = useState([])
   const [f, setF] = useState({ patient_id: appointment?.patient_id || patientId || '', date: appointment ? localDate(new Date(appointment.appointment_time)) : defaultDate || today(), time: appointment ? new Date(appointment.appointment_time).toTimeString().slice(0, 5) : '10:00', doctor_id: appointment?.doctor_id || '', treatment_id: appointment?.treatment_id || '', floor_room: appointment?.floor_room || '', duration: appointment?.duration_minutes || 30, notes: appointment?.notes || '', repeat: false, repeatFreq: 'weekly', repeatCount: 4 })
@@ -36,10 +36,6 @@ export function AppointmentForm({ patientId, defaultDate, appointment, onDone, o
   const toast = useToast()
 
   useEffect(() => {
-    fetchAll(() => sb.from('patients').select('id,full_name,phone').is('merged_into', null).order('full_name').order('id')).then(data => {
-      setPatients(data ?? [])
-      if (!patientId && !appointment && data?.length) setF(x => ({ ...x, patient_id: data[0].id }))
-    }).catch(e => toast(e.message))
     sb.from('staff').select('*').eq('active', true).eq('role', 'doctor').order('full_name').then(({ data }) => setDoctors(data ?? []))
     sb.from('treatments').select('*').order('name').then(({ data }) => setTreatments(data ?? []))
   }, [])
@@ -102,9 +98,7 @@ export function AppointmentForm({ patientId, defaultDate, appointment, onDone, o
     <>
     <Modal title={appointment ? "Edit / reschedule appointment" : "New appointment"} onClose={onClose}>
       <label>Patient *</label>
-      <select value={f.patient_id} onChange={set('patient_id')}>
-        {patients.map(p => <option key={p.id} value={p.id}>{p.full_name} · {p.phone}</option>)}
-      </select>
+      <PatientPicker value={f.patient_id} locked={!!patientId} onChange={id => setF(x => ({ ...x, patient_id: id }))} />
       {allergies && <div className="allergy-alert" style={{ marginBottom: '1rem' }}>⚠ Allergy: {allergies}</div>}
       <div className="mrow">
         <div><label>Date *</label><input type="date" value={f.date} onChange={set('date')} /></div>

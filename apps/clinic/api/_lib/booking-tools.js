@@ -1,7 +1,7 @@
 // OpenAI tool-calling definitions + handlers for the WhatsApp booking bot.
 // Every handler is scoped to the verified sender's own phone/patient —
 // never a value the model could supply on the caller's behalf.
-import './clinic-time.js'
+import { todayLocal } from './clinic-time.js'
 import { getOpenSlots, isSlotFree } from './slots.js'
 import { sendText } from './wa.js'
 
@@ -12,6 +12,54 @@ import { sendText } from './wa.js'
 // a false alarm costs a glance, a missed one costs a patient.
 const URGENT = /\b(pain|painful|ache|aching|toothache|bleed(ing|s)?|blood|swell(ing|s)?|swollen|fever|pus|abscess|infect(ed|ion)|broken|broke|chipped|fracture[d]?|knocked|trauma|accident|injur(y|ed)|emergency|urgent|numb(ness)?|allerg(y|ic)|reaction|can'?t (open|swallow|breathe|eat|sleep))\b/i
 export const isUrgent = text => URGENT.test(String(text ?? ''))
+
+const last10 = phone => String(phone ?? '').replace(/\D/g, '').slice(-10)
+
+// Every live patient whose number ends with the sender's. More than one is
+// common — a family on one phone — and the first of them is not necessarily
+// the one writing, so callers must not assume a single match.
+export async function matchPatients(admin, phone) {
+  const { data, error } = await admin.from('patients').select('id, full_name, phone')
+    .is('merged_into', null).is('deleted_at', null).ilike('phone', `%${last10(phone)}`).limit(5)
+  if (error) throw error
+  return data ?? []
+}
+
+// A stranger cannot book, because a booking needs a patient. Rather than turn
+// them away, the assistant may register them — but only as the number they are
+// writing from, never one they type, and only a handful a day so the patient
+// list cannot be filled with junk by anyone who knows the clinic's number.
+export const WHATSAPP_SOURCE = 'WhatsApp assistant'
+export const DAILY_REGISTRATION_CAP = 20
+
+async function createPatient(admin, phone, args) {
+  const name = String(args.full_name ?? '').trim().replace(/\s+/g, ' ')
+  if (name.length < 2 || name.length > 80 || !/\p{L}/u.test(name))
+    return { ok: false, error: 'Ask the person for their full name before registering them.' }
+
+  // Someone may have been registered since this conversation began.
+  const existing = await matchPatients(admin, phone)
+  if (existing.length === 1) return { ok: true, patient: existing[0], already_registered: true }
+  if (existing.length > 1) return { ok: false, error: 'This number belongs to several patients. Take a front-desk follow-up instead.' }
+
+  const startOfDay = new Date(todayLocal() + 'T00:00:00').toISOString()
+  const { count } = await admin.from('patients').select('id', { count: 'exact', head: true })
+    .eq('referral_source', WHATSAPP_SOURCE).gte('created_at', startOfDay)
+  if ((count ?? 0) >= DAILY_REGISTRATION_CAP)
+    return { ok: false, error: 'Online registration is full for today. Take a front-desk follow-up instead.' }
+
+  const age = Number.parseInt(args.age, 10)
+  const row = { full_name: name, phone: last10(phone), referral_source: WHATSAPP_SOURCE }
+  if (Number.isInteger(age) && age >= 0 && age <= 110) Object.assign(row, { approx_age: age, approx_age_recorded_on: todayLocal() })
+
+  const { data, error } = await admin.from('patients').insert(row).select('id, full_name, phone').single()
+  if (error) return { ok: false, error: 'Could not register right now. Take a front-desk follow-up instead.' }
+  await admin.from('activity_log').insert({
+    action: 'patient.registered_whatsapp', entity_type: 'patients', entity_id: data.id,
+    summary: 'Patient registered by the WhatsApp assistant — confirm details at their first visit',
+  })
+  return { ok: true, patient: data }
+}
 
 async function findDoctor(admin, name) {
   if (!name) return null
@@ -34,7 +82,8 @@ async function nextAppointment(admin, patientId) {
 }
 
 // `patient` is { id, full_name, phone } or null for an unrecognized sender.
-export function buildTools(patient) {
+// `shared` is true when several patients use the sender's number.
+export function buildTools(patient, { shared = false } = {}) {
   const tools = [
     {
       type: 'function',
@@ -87,24 +136,42 @@ export function buildTools(patient) {
       },
       { type: 'function', function: { name: 'check_my_bookings', description: "List the patient's upcoming appointments.", parameters: { type: 'object', properties: {} } } },
     )
-  } else {
+  } else if (!shared) {
     tools.push({
       type: 'function',
       function: {
-        name: 'create_lead',
-        description: 'Record a new-patient enquiry for front desk follow-up (use when the sender is not an existing patient).',
+        name: 'create_patient',
+        description: 'Register the person writing as a new patient so they can be booked. Call this once you have their full name. The phone number is taken from WhatsApp automatically.',
         parameters: {
           type: 'object',
           properties: {
-            full_name: { type: 'string' },
-            preferred_time: { type: 'string', description: 'Free text, e.g. "tomorrow afternoon"' },
-            reason: { type: 'string' },
+            full_name: { type: 'string', description: 'Full name of the person the appointment is for' },
+            age: { type: 'integer', description: 'Age in years, only if they volunteered it' },
           },
           required: ['full_name'],
         },
       },
     })
   }
+  // A front-desk follow-up is always available: for a question the assistant
+  // cannot answer, for someone booking on another person's behalf, and for a
+  // number shared by several patients where the assistant must not guess who.
+  tools.push({
+    type: 'function',
+    function: {
+      name: 'create_lead',
+      description: 'Ask the front desk to call back: for a new-patient enquiry that is not ready to book, a booking for someone other than the sender, or when the sender cannot be identified.',
+      parameters: {
+        type: 'object',
+        properties: {
+          full_name: { type: 'string', description: 'Name of the person the follow-up is about' },
+          preferred_time: { type: 'string', description: 'Free text, e.g. "tomorrow afternoon"' },
+          reason: { type: 'string' },
+        },
+        required: ['full_name'],
+      },
+    },
+  })
   tools.push({
     type: 'function',
     function: {
@@ -169,7 +236,9 @@ export async function runTool(admin, patient, phone, name, args) {
     return { appointments: data ?? [] }
   }
 
-  if (name === 'create_lead' && !patient) {
+  if (name === 'create_patient' && !patient) return createPatient(admin, phone, args)
+
+  if (name === 'create_lead') {
     await admin.from('bookings').insert({
       patient_name: args.full_name, phone, reason: args.reason || null,
       preferred_day: args.preferred_time || null, lead_source: 'whatsapp_direct', status: 'new',

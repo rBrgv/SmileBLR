@@ -21,19 +21,15 @@ import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { sendText } from './_lib/wa.js'
 import { chat } from './_lib/ai.js'
-import { buildTools, runTool, isUrgent } from './_lib/booking-tools.js'
+import { buildTools, runTool, isUrgent, matchPatients } from './_lib/booking-tools.js'
 
 const CONFIRM_WORDS = ['confirm', 'yes', 'y', 'ok', 'okay', '1']
 const CANCEL_WORDS = ['cancel', 'no', 'n', '2']
-const MAX_TOOL_ROUNDS = 4
+// A stranger who is registered and then booked needs register, list slots, book
+// and a closing reply — four model calls on their own — so there is headroom.
+const MAX_TOOL_ROUNDS = 6
 
-async function findPatientByPhone(admin, phone) {
-  const last10 = phone.slice(-10)
-  const { data } = await admin.from('patients').select('id, full_name, phone').ilike('phone', `%${last10}`)
-  return (data ?? [])[0] || null
-}
-
-async function buildSystemPrompt(admin, patient) {
+async function buildSystemPrompt(admin, patient, shared = false) {
   const { data: settings } = await admin.from('clinic_settings')
     .select('open_days, open_time, close_time').eq('id', 1).maybeSingle()
   const { data: doctors } = await admin.from('staff').select('full_name, specialization').eq('role', 'doctor').eq('active', true)
@@ -47,7 +43,11 @@ async function buildSystemPrompt(admin, patient) {
     `Clinic hours: ${openDays}, ${settings?.open_time ?? '10:00'}–${settings?.close_time ?? '20:00'}.`,
     `Doctors: ${(doctors ?? []).map(d => `${d.full_name}${d.specialization ? ' (' + d.specialization + ')' : ''}`).join('; ') || 'none listed'}.`,
     `Treatments offered: ${(treatments ?? []).map(t => t.name).join(', ') || 'none listed'}.`,
-    patient ? `You are speaking with an existing patient: ${patient.full_name}.` : 'This sender is not an existing patient — offer to take their details as an enquiry.',
+    patient
+      ? `You are speaking with an existing patient: ${patient.full_name}. If they say a booking is for someone else (a child, parent or spouse), do not book it on this patient's record: use create_lead with that person's name.`
+      : shared
+        ? 'This phone number is shared by several patients, so you cannot tell who is writing. Do not book, cancel or look up appointments. Ask who it is for and use create_lead so the front desk can call back.'
+        : 'This sender is not registered yet. To book them: ask whether the appointment is for themselves, get the full name of the person being booked (and their age only if they offer it), call create_patient, then continue with list_slots and book_appointment. Never invent a name. If they only have a question, answer it; use create_lead only if they want the front desk to call back.',
     'Use the available tools for anything involving real data (slots, bookings, patient records) — never invent times, doctors, or confirmations.',
     'For anything medical (pain, symptoms, treatment advice), a complaint, or price negotiation, use the escalate tool rather than answering yourself.',
     'Keep replies short and friendly, suitable for WhatsApp.',
@@ -55,13 +55,18 @@ async function buildSystemPrompt(admin, patient) {
 }
 
 async function runBookingBot(admin, phone, text) {
-  const patient = await findPatientByPhone(admin, phone)
+  const matches = await matchPatients(admin, phone)
+  const shared = matches.length > 1
+  // One match is the sender. Several is a family on one phone, and guessing
+  // which of them is writing would book or cancel someone else's visit.
+  let patient = matches.length === 1 ? matches[0] : null
   await admin.from('wa_messages').insert({ phone, patient_id: patient?.id || null, direction: 'in', body: text })
 
   const { data: convo } = await admin.from('wa_conversations').select('*').eq('phone', phone).maybeSingle()
   const history = convo?.history ?? []
-  let systemPrompt = await buildSystemPrompt(admin, patient)
-  const tools = buildTools(patient)
+  let systemPrompt = await buildSystemPrompt(admin, patient, shared)
+  let tools = buildTools(patient, { shared })
+  let escalated = false // one alert per message, whoever raises it
 
   // A symptom reaches staff whatever the model decides. One escalation per
   // half hour per number, so a patient describing it over five messages does
@@ -71,6 +76,7 @@ async function runBookingBot(admin, phone, text) {
     const { data: recent } = await admin.from('bookings').select('id').eq('phone', phone)
       .like('reason', '[NEEDS STAFF]%').gte('created_at', since).limit(1)
     if (!recent?.length) await runTool(admin, patient, phone, 'escalate', { reason: `Message: "${text.slice(0, 300)}"` })
+    escalated = true
     systemPrompt += ' The front desk has already been alerted about this message. Do not give medical advice or diagnose; tell the patient staff will contact them shortly, and say to call the clinic or go to an emergency department if it is severe.'
   }
 
@@ -84,7 +90,19 @@ async function runBookingBot(admin, phone, text) {
     for (const call of message.tool_calls) {
       let args = {}
       try { args = JSON.parse(call.function.arguments || '{}') } catch { /* malformed args, treat as empty */ }
-      const result = await runTool(admin, patient, phone, call.function.name, args)
+      let result
+      if (call.function.name === 'escalate' && escalated) {
+        result = { ok: true, already_raised: true } // the desk already has this message
+      } else {
+        result = await runTool(admin, patient, phone, call.function.name, args)
+        if (call.function.name === 'escalate') escalated = true
+      }
+      // Registered mid-conversation: from here they are a patient, so booking
+      // tools become available on the next round.
+      if (call.function.name === 'create_patient' && result.ok && result.patient) {
+        patient = result.patient
+        tools = buildTools(patient)
+      }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
     }
   }
@@ -164,19 +182,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ received: true })
     }
 
-    const last10 = from.slice(-10)
-    const { data: patients, error: patientError } = await admin.from('patients').select('id, full_name, phone').ilike('phone', `%${last10}`)
-    if (patientError) throw patientError
-    const patient = (patients ?? [])[0]
-    if (!patient) return res.status(200).json({ received: true })
+    // "confirm" or "cancel" answers a reminder. With several patients on one
+    // number it means whichever of them has the next visit, not the first
+    // one the database happens to return.
+    const patients = await matchPatients(admin, from)
+    if (!patients.length) return res.status(200).json({ received: true })
 
     const { data: appt, error: appointmentError } = await admin.from('appointments')
-      .select('id, appointment_time').eq('patient_id', patient.id)
+      .select('id, patient_id, appointment_time').in('patient_id', patients.map(x => x.id))
       .gte('appointment_time', new Date().toISOString())
       .not('status', 'in', '("cancelled","no_show","completed")')
       .order('appointment_time').limit(1).maybeSingle()
     if (appointmentError) throw appointmentError
     if (!appt) return res.status(200).json({ received: true })
+    const patient = patients.find(x => x.id === appt.patient_id)
 
     const status = isConfirm ? 'confirmed' : 'cancelled'
     const { error: updateError } = await admin.from('appointments').update({ status }).eq('id', appt.id)

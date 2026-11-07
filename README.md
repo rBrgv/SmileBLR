@@ -51,17 +51,22 @@ authenticated account that is unlinked or inactive has no clinic-data access.
 
 | Capability | Admin | Doctor | Receptionist | Assistant |
 |---|:---:|:---:|:---:|:---:|
-| Read/create/update normal clinic records | Yes | Yes | Yes | Yes |
-| View staff directory | Yes | Yes | Yes | Yes |
+| Read all clinic records | Yes | Yes | Yes | Yes |
+| Register patients, appointments, bookings, waitlist, recalls | Yes | Yes | Yes | Yes |
+| Invoices, payments and receipts | Yes | Yes | Yes | Yes |
+| Record vitals | Yes | Yes | No | Yes |
+| Medical history, tooth chart, consultations, prescriptions, treatment plans and records, consent forms | Yes | Yes | No | No |
+| Mark a follow-up call as done | Yes | Yes | Yes | Yes |
+| View the staff directory | Yes | Yes | Yes | Yes |
 | Add, edit, deactivate, or invite staff | Yes | No | No | No |
 | Permanently delete records | Yes | Yes | No | No |
 | Merge duplicate patients | Yes | Yes | No | No |
-| View the activity log | Yes | No | No | No |
-| Use the CSV export screen | Yes | No | No | No |
+| Archive a patient | Yes | No | No | No |
+| Clinic settings, WhatsApp conversations, activity log, CSV export | Yes | No | No | No |
 
-“Normal clinic records” currently includes front-desk, clinical, financial,
-inventory, and compliance records. Receptionist and assistant are distinct
-labels but intentionally have the same database permissions at present.
+Clinical writes are restricted in the database itself (migration 017), not just
+hidden in the interface. Every update to a record keeps the previous version in
+`record_changes` (migration 026), so editing is open but nothing is lost.
 
 ## First handoff
 

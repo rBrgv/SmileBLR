@@ -1,10 +1,27 @@
 {
+  "functions": {
+    "api/wa-webhook.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/send-reminders", "schedule": "30 3 * * *" },
-    { "path": "/api/run-campaigns", "schedule": "0 4 * * *" }
+    {
+      "path": "/api/send-reminders",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/run-campaigns",
+      "schedule": "0 4 * * *"
+    }
   ]
 }
