@@ -61,7 +61,7 @@ export default function Invoices() {
               <td>{v.staff?.full_name || '—'}</td>
               <td><PaymentEditor invoice={v} onDone={load} /></td>
               <td>{receipts[v.id]
-                ? <><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/receipt/' + receipts[v.id].id}>{receiptNo(receipts[v.id])}</a>{' '}
+                ? <><a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/receipt/' + receipts[v.id].id}>{receiptNo(receipts[v.id], v)}</a>{' '}
                   {waLink(v.patients?.phone) && <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(v.patients.phone, receiptMessage(v, v.patients, receipts[v.id]))}>Share</a>}</>
                 : '—'}</td>
               <td>

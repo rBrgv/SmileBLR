@@ -4,6 +4,8 @@ import { sb } from '../lib/supabase'
 import { fmtD } from '../lib/format'
 import { useToast } from '../components/Toast'
 import Modal from '../components/Modal'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { logActivity } from '../lib/activityLog'
 import { useRole } from '../lib/RoleContext'
 import { ageLabel, patientAge } from '../lib/age'
 
@@ -146,7 +148,9 @@ export default function Patients() {
   const toast = useToast()
   const [page, setPage] = useState(0)
   const [count, setCount] = useState(0)
-  const [sort, setSort] = useState({ field: 'created_at', asc: false })
+  const [sort, setSort] = useState({ field: 'full_name', asc: true })
+  const [archiving, setArchiving] = useState(null) // patient row awaiting confirmation
+  const [reload, setReload] = useState(0)
   // Neither a birth date nor an age from the old system: the front desk has to
   // ask these patients at their next visit.
   const [missingAge, setMissingAge] = useState(false)
@@ -177,7 +181,7 @@ export default function Patients() {
       setRows(data || []); setCount(count || 0)
     }, 250)
     return () => { active = false; clearTimeout(timer) }
-  }, [q, page, sort, missingAge, missingPhone])
+  }, [q, page, sort, missingAge, missingPhone, reload])
 
   const view = rows || []
 
@@ -223,12 +227,29 @@ export default function Patients() {
               <td>{p.phone && p.phone !== 'N/A' ? p.phone : <span className="badge b-partial">no phone</span>}</td>
               <td>{ageLabel(p) ?? <span className="sub">not recorded</span>}</td>
               <td>{fmtD(p.created_at)}</td>
-              <td><button className="btn sm ghost" onClick={() => nav('/patients/' + p.id)}>Open</button></td>
+              <td>
+                <button className="btn sm ghost" onClick={() => nav('/patients/' + p.id)}>Open</button>
+                {role === 'admin' && <>{' '}<button className="btn sm ghost danger" onClick={() => setArchiving(p)}>Archive</button></>}
+              </td>
             </tr>
           ))}</tbody>
         </table>
       )}
       {showForm && <PatientForm onClose={() => setShowForm(false)} onDone={id => { setShowForm(false); nav('/patients/' + id) }} />}
+      {archiving && (
+        <ConfirmDialog
+          title={'Archive ' + archiving.patient_code + ' ' + archiving.full_name + '?'}
+          body="The patient disappears from the list and search, and can be restored from Trash. A patient with bills or treatment records cannot be archived: merge them into the right record instead (see Duplicates)."
+          confirmLabel="Archive" onCancel={() => setArchiving(null)}
+          onConfirm={async () => {
+            const target = archiving
+            setArchiving(null)
+            const { error } = await sb.rpc('archive_patient', { p_id: target.id })
+            if (error) return toast('Error: ' + error.message)
+            logActivity('patient.archived', 'patients', target.id, `Archived ${target.patient_code}`)
+            toast(target.patient_code + ' archived'); setReload(n => n + 1)
+          }} />
+      )}
       <div className="bar"><button className="btn ghost" disabled={!page} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page + 1} · {count} patients</span><button className="btn ghost" disabled={(page + 1) * 50 >= count} onClick={() => setPage(p => p + 1)}>Next</button></div>
     </>
   )

@@ -2,7 +2,8 @@ import ClinicalButton from '../components/ClinicalButton'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { fmtD } from '../lib/format'
+import { fmtD, inr } from '../lib/format'
+import { costSummary } from '../lib/records'
 import { useToast } from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { RecordForm } from '../components/TreatmentRecordPanel'
@@ -10,7 +11,7 @@ import { RecordForm } from '../components/TreatmentRecordPanel'
 export default function TreatmentRecords() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
-  const [show, setShow] = useState(false)
+  const [form, setForm] = useState(null) // {} for new, the row for an edit
   const [confirmDel, setConfirmDel] = useState(null)
   const toast = useToast()
   const nav = useNavigate()
@@ -44,21 +45,24 @@ export default function TreatmentRecords() {
     <>
       <div className="pagehead">
         <h2>Treatment records</h2>
-        <ClinicalButton className="btn" onClick={() => setShow(true)}>+ New record</ClinicalButton>
+        <ClinicalButton className="btn" onClick={() => setForm({})}>+ New record</ClinicalButton>
       </div>
       <div className="bar"><input placeholder="Search patient…" value={q} onChange={e => setQ(e.target.value)} /></div>
+      {view.length > 0 && <p className="sub" style={{ marginBottom: '.5rem' }}>Total cost of the {view.length} shown: <b>{costSummary(view)}</b></p>}
       {!view.length ? <div className="empty">No treatment records yet.</div> : (
         <table className="tbl">
-          <thead><tr><th>Date</th><th>Patient</th><th>Treatment</th><th>Tooth</th><th>By</th><th>Follow-up</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Patient</th><th>Treatment</th><th>Tooth</th><th>By</th><th>Cost</th><th>Follow-up</th><th></th></tr></thead>
           <tbody>{view.map(r => (
             <tr key={r.id}>
               <td>{fmtD(r.performed_date)}</td>
               <td className="link" onClick={() => nav('/patients/' + r.patients?.id)}>{r.patients?.full_name}</td>
               <td>{r.treatments?.name || '—'}</td><td>{r.tooth_number || '—'}</td>
               <td>{r.staff?.full_name || '—'}</td>
+              <td>{r.amount == null ? '—' : inr(r.amount)}</td>
               <td>{r.follow_up_required ? fmtD(r.follow_up_date) : '—'}
                 {r.follow_up_required && <>{' '}<button className="btn sm ghost" onClick={() => markCalled(r.id)}>Mark called</button></>}</td>
               <td>
+                <ClinicalButton className="btn sm ghost" onClick={() => setForm(r)}>Edit</ClinicalButton>{' '}
                 <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/post-op/' + r.id}>Post-op</a>{' '}
                 <ClinicalButton className="btn sm ghost danger" onClick={() => setConfirmDel(r.id)}>Delete</ClinicalButton>
               </td>
@@ -66,7 +70,7 @@ export default function TreatmentRecords() {
           ))}</tbody>
         </table>
       )}
-      {show && <RecordForm onClose={() => setShow(false)} onDone={() => { setShow(false); load() }} />}
+      {form && <RecordForm patientId={form.id ? form.patient_id : undefined} record={form.id ? form : null} onClose={() => setForm(null)} onDone={() => { setForm(null); load() }} />}
       {confirmDel && <ConfirmDialog title="Move this record to trash?" confirmLabel="Move to trash" onCancel={() => setConfirmDel(null)}
         onConfirm={() => { remove(confirmDel); setConfirmDel(null) }} />}
     </>

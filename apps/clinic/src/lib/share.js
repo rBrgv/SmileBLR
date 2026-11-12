@@ -41,7 +41,7 @@ export function receiptMessage(invoice, patient, row) {
   return sign([
     `${patient?.full_name || 'Patient'}, thank you. Your payment is received at ${CLINIC.name}.`,
     '',
-    `Receipt ${receiptNo(row)} · ${fmtD(row.created_at)}`,
+    `Receipt ${receiptNo(row, invoice)} · ${fmtD(row.created_at)}`,
     `Against invoice ${invoiceNo(invoice)} · ${fmtD(invoice.invoice_date)}`,
     a.refunded ? `Refunded in full: ${inr(a.prior ?? a.total)}`
       : a.collected == null ? `Total received to date: ${inr(a.toDate)}`

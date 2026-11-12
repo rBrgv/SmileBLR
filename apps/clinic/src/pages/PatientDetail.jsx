@@ -455,7 +455,7 @@ function Ledger({ inv, patient, onNew, onEdit, onSaved }) {
                       <tr key={r.id} className="sub-row">
                         <td>{fmtD(r.created_at)}</td>
                         <td colSpan={4}>
-                          {receiptNo(r)} · {a.refunded ? 'refunded' : a.collected != null && a.collected < 0 ? 'returned' : 'received'} {inr(got)}
+                          {receiptNo(r, v)} · {a.refunded ? 'refunded' : a.collected != null && a.collected < 0 ? 'returned' : 'received'} {inr(got)}
                           {r.payment_method ? ' · ' + r.payment_method : ''}{r.note ? ' · ' + r.note : ''}
                         </td>
                         <td colSpan={2}>{a.credit > 0 ? 'Credit ' + inr(a.credit) : 'Balance ' + inr(a.balance)}</td>

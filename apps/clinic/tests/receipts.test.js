@@ -42,7 +42,7 @@ test('receipts are numbered once per payment, in the order money was taken', asy
     // Each further payment, and each correction, takes the next number.
     await db.query('SELECT record_invoice_payment($1,$2,$3,$4,$5,$6)', [INV, 6000, false, 'upi', 'part payment', 0])
     await db.query('SELECT record_invoice_payment($1,$2,$3,$4,$5,$6)', [INV, 10000, false, 'cash', 'settled', 1])
-    const issued = (await db.query('SELECT receipt_number, old_amount, new_amount, payment_method FROM invoice_payment_changes ORDER BY receipt_number')).rows
+    const issued = (await db.query('SELECT receipt_number, seq, old_amount, new_amount, payment_method FROM invoice_payment_changes ORDER BY receipt_number')).rows
     assert.deepEqual(issued.map(r => r.receipt_number), [1, 2, 3, 4])
     const last = issued.at(-1)
 
@@ -56,8 +56,24 @@ test('receipts are numbered once per payment, in the order money was taken', asy
     const invoice = (await db.query('SELECT * FROM invoices WHERE id=$1', [INV])).rows[0]
     const a = receiptAmounts(invoice, last)
     assert.deepEqual([a.total, a.prior, a.collected, a.toDate, a.balance], [10000, 6000, 4000, 10000, 0])
-    assert.equal(receiptNo(last), 'RCPT000004')
-    assert.equal(invoiceNo(invoice), 'INV' + String(invoice.invoice_number).padStart(6, '0'))
+    // The clinic's own format: receipt 4 of this invoice, not the 4th of the clinic.
+    assert.deepEqual(issued.map(r => r.seq), [1, 2, 3, 4])
+    assert.equal(receiptNo(last, invoice), `RCPT${invoice.invoice_number}-4`)
+    assert.equal(receiptNo({ receipt_number: 4 }, invoice), 'RCPT000004', 'a row without a position falls back to the running number')
+    assert.equal(invoiceNo(invoice), 'INV' + String(invoice.invoice_number).padStart(4, '0'))
+
+    // A second invoice starts its own receipts at 1, while the running number carries on.
+    await db.exec('RESET ROLE')
+    const other = (await db.query("INSERT INTO invoices(patient_id, amount) SELECT patient_id, 1000 FROM invoices WHERE id=$1 RETURNING id", [INV])).rows[0].id
+    await db.exec('SET ROLE authenticated') // still signed in as the reception user set above
+    await db.query('SELECT record_invoice_payment($1,$2,$3,$4,$5,$6)', [other, 1000, false, 'cash', 'first payment', 0])
+    const first = (await db.query('SELECT seq, receipt_number FROM invoice_payment_changes WHERE invoice_id=$1', [other])).rows[0]
+    assert.deepEqual([first.seq, first.receipt_number], [1, 5])
+
+    // Two receipts of one invoice can never share a position.
+    await db.exec('RESET ROLE')
+    await assert.rejects(db.query('UPDATE invoice_payment_changes SET seq = 1 WHERE invoice_id=$1 AND seq = 2', [INV]), /unique|duplicate/i)
+
     const message = receiptMessage(invoice, { full_name: 'Test patient' }, last)
     assert.match(message, /Received now: ₹4,000/)
     assert.match(message, /Nothing further due/)

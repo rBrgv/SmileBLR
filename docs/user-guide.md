@@ -48,7 +48,7 @@ A grey or disabled button means your role cannot do that. It is not broken.
 
 If the name and age look like someone already registered, the app shows a warning. It does not stop you. Check before saving, because duplicates are annoying to clean up.
 
-**Existing patient:** use the search box at the top of **Patients**. You can search by **name, phone, patient ID (like SB00001), or the clinic file number**.
+**Existing patient:** use the search box at the top of **Patients**. The list is in alphabetical order. You can search by **name, phone, patient ID (like SB00001), or the clinic file number**.
 
 **Patient messages on WhatsApp:** the assistant replies on its own (see section 5). Anything new appears under **Bookings**.
 
@@ -117,6 +117,9 @@ If something was entered wrongly on a signed form, click **Correct**. The origin
 
 - **From a plan:** click **Log treatment** on the stage. Fill in tooth, notes, follow-up.
 - **Without a plan:** patient page → **Treatment Records → + New record**.
+- **Several teeth for one procedure** (for example, caps measured for two teeth): choose every tooth in the **Tooth number(s)** box. One record is saved for each tooth.
+- **Cost:** type what the procedure cost. With several teeth, the cost is *per tooth*, and the form shows the total. Leave it empty if unknown. The treatment list shows each cost and a total.
+- **Wrong tooth, date or cost?** Click **Edit** on the record.
 - If the patient needs a call back, tick **follow-up required**. A date is suggested; change it if you want. From that date it shows on the **Dashboard** with a **Call** button. After ringing, click **Mark called** on the treatment record so it disappears.
 
 ### Step 7: Prescription *(doctor)*
@@ -125,15 +128,17 @@ Patient page → **Prescriptions → + New prescription**. Use **+ Add medicine*
 
 ### Step 8: Bill and payment
 
-1. Patient page → **Bills → + New invoice**. Or use **Create invoice** from the plan.
+1. Patient page → **Bills → + New invoice**. Or, from **Treatment Records**, tick the procedures and click **Create invoice**. Records already on an invoice show their invoice number, so nothing is billed twice. You can also use **Create invoice** from the plan.
 2. Add each procedure with price, discount and tax. Save.
 3. When money is received, click **Record payment**.
    - **Enter the total received so far, not just today's amount.** If the patient already paid ₹2,000 and pays ₹3,000 more, enter **5,000**.
    - Choose cash, card or UPI and write a short reference.
-4. Every payment gets its own numbered **receipt**. Click **Receipt** to print it. It shows the receipt number, the invoice it belongs to, what was received, the balance, and the amount in words.
+4. Every payment gets its own numbered **receipt**, written like **RCPT26-1** (receipt 1 of invoice 26). Click **Receipt** to print it. It shows the receipt number, the invoice it belongs to, what was received, the balance, and the amount in words.
 5. **Share** next to a bill or receipt opens WhatsApp with the amounts written out, ready to send.
 
 If a payment was entered wrongly, just record the payment again with the correct total. A new receipt is issued, and the old one stays on file marked "superseded".
+
+**Printing the invoice:** **Print** gives the invoice in the format patients use for insurance claims. It lists each procedure with its cost, every payment received with its receipt number, the amount received in words, and the line "This is a computer generated invoice and does not require signature". No signature is needed.
 
 You can **Edit** a bill at any time, for example if the patient was overcharged. If the patient has paid more than the new total, the screen shows "Credit due to patient".
 
@@ -161,11 +166,13 @@ At the top right of every patient page:
 | **Bookings** | Enquiries from the website and WhatsApp, including anything marked **NEEDS STAFF** |
 | **Waitlist** | Patients who want an earlier slot; **Book now** when one opens |
 | **X-Rays** | Upload and view X-ray images (also under the patient) |
-| **Lab Orders, Referrals** | Work sent to labs, patients referred out |
+| **Lab Orders** | Work sent to labs. Click **Received** when it comes back (the date is filled in), **Edit** to change anything, or add a note such as "remake upper". Overdue work shows a badge |
+| **Referrals** | Patients referred out |
 | **Insurance Claims** | Track claims |
 | **Inventory** | Stock levels |
 | **Treatments** | The price list. Add a new procedure here and it appears in every dropdown |
-| **Staff** | Add doctors and staff, invite logins, record leave *(admin)* |
+| **Staff** | Add doctors and staff, **Edit** their details (name, role, specialization, phone), invite logins, record leave *(admin)*. The last working admin cannot be demoted or switched off |
+| **Duplicates** | Patients entered twice, grouped by name, with what is recorded on each. Merge the extras into the one to keep, or archive an empty one |
 | **Trash** | Deleted records. **Restore** brings one back. Only doctors and admins can delete permanently |
 
 ---
@@ -203,8 +210,8 @@ Admins can read every conversation under **Admin → WhatsApp**, and click **Rep
 | Typed something wrong | Open it, **Edit**, save. The old version is kept. |
 | Wrong payment amount | **Record payment** again with the right total. A new receipt is issued. |
 | Signed consent has a wrong name | **Correct** on the Consent Forms screen. |
-| The same person is registered twice | Open the one you want to keep → **Merge a duplicate into this patient**. Everything moves across. *(doctor, admin)* |
-| A registration made by mistake, with no bills or treatment | Ask the admin to **Archive** the patient. It is refused if there are bills or treatment, because those should be merged, not hidden. |
+| The same person is registered twice | Open **Duplicates**, tick the record to keep, click **Merge**. Everything moves across and it cannot be undone. Or open the one to keep → **Merge a duplicate into this patient**. *(doctor, admin)* |
+| A registration made by mistake, with no bills or treatment | Admin: click **Archive** on the row in **Patients**, or on the **Duplicates** screen. It is refused if there are bills or treatment, because those should be merged, not hidden. |
 | Deleted something by accident | Click **Undo** on the message that appears, or open **Trash → Restore**. |
 | A patient has no age | Click **Add age** on their page. |
 

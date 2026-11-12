@@ -22,7 +22,7 @@ export default function PrintReceipt() {
       .then(({ data }) => {
         setRow(data)
         if (!data) return
-        sb.from('invoice_payment_changes').select('receipt_number, created_at')
+        sb.from('invoice_payment_changes').select('receipt_number, seq, created_at')
           .eq('invoice_id', data.invoice_id).gt('receipt_number', data.receipt_number)
           .order('receipt_number', { ascending: false }).limit(1)
           .then(({ data: next }) => setLater(next?.[0] || null))
@@ -41,8 +41,8 @@ export default function PrintReceipt() {
 
   return (
     <PrintDoc title={a.refunded || (a.collected != null && a.collected < 0) ? 'Refund receipt' : 'Receipt'}>
-      {later && <p className="allergy-alert">Superseded by receipt {'RCPT' + String(later.receipt_number).padStart(6, '0')} of {fmtD(later.created_at)}. This copy is kept as it was given.</p>}
-      <div className="print-row"><b>Receipt #</b><span>{receiptNo(row)}</span></div>
+      {later && <p className="allergy-alert">Superseded by receipt {receiptNo(later, inv)} of {fmtD(later.created_at)}. This copy is kept as it was given.</p>}
+      <div className="print-row"><b>Receipt #</b><span>{receiptNo(row, inv)}</span></div>
       <div className="print-row"><b>Receipt date</b><span>{fmtDT(row.created_at)}</span></div>
       <div className="print-row"><b>Against invoice</b><span>{invoiceNo(inv)} dated {fmtD(inv.invoice_date)}</span></div>
       <div className="print-row"><b>Patient</b><span>{p?.full_name}{p?.patient_code ? ' · ' + p.patient_code : ''}{p?.manual_id ? ' · file ' + p.manual_id : ''}</span></div>

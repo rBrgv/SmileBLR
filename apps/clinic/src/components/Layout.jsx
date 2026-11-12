@@ -7,7 +7,7 @@ import { sb } from '../lib/supabase'
 const sections = [
   { label: null, links: [['/', 'Dashboard']] },
   { label: 'Front Desk', links: [
-    ['/bookings', 'Bookings'], ['/patients', 'Patients'], ['/appointments', 'Appointments'], ['/waitlist', 'Waitlist'], ['/recall', 'Recall Reminders'],
+    ['/bookings', 'Bookings'], ['/patients', 'Patients'], ['/duplicates', 'Duplicates'], ['/appointments', 'Appointments'], ['/waitlist', 'Waitlist'], ['/recall', 'Recall Reminders'],
   ] },
   { label: 'Clinical', links: [
     ['/treatment-plans', 'Treatment Plans'], ['/treatment-records', 'Treatment Records'], ['/xrays', 'X-Rays'],

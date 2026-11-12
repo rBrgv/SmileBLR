@@ -6,8 +6,13 @@ const round = n => Math.round(n * 100) / 100
 // and never changes, even when the invoice is edited; the receipt number comes
 // from the payment event, so a correction is a new receipt rather than a
 // quiet reprint of the old one.
-export const invoiceNo = v => v?.invoice_number ? 'INV' + String(v.invoice_number).padStart(6, '0') : '—'
-export const receiptNo = r => r?.receipt_number ? 'RCPT' + String(r.receipt_number).padStart(6, '0') : '—'
+export const invoiceNo = v => v?.invoice_number ? 'INV' + String(v.invoice_number).padStart(4, '0') : '—'
+// RCPT26-1 is the first receipt of invoice 26, the way the clinic has always
+// numbered them. Without the position (an older row) it falls back to the
+// running number.
+export const receiptNo = (r, invoice) =>
+  r?.seq && invoice?.invoice_number ? `RCPT${invoice.invoice_number}-${r.seq}`
+    : r?.receipt_number ? 'RCPT' + String(r.receipt_number).padStart(6, '0') : '—'
 
 // What one payment event actually collected. invoice_payment_changes records
 // the running total received, so the money that changed hands that day is the

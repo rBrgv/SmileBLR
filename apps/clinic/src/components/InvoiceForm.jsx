@@ -3,14 +3,15 @@ import { sb } from '../lib/supabase'
 import { fetchAll, received } from '../lib/handoff'
 import { emptyInvoiceLine, invoiceTotals, lineTotals } from '../lib/clinical'
 import { inr } from '../lib/format'
+import { invoiceLinesFrom } from '../lib/records'
 import Modal from './Modal'
 import ToothSelect from './ToothSelect'
 import { useToast } from './Toast'
-export default function InvoiceForm({patientId,doctors,invoice,fromPlan,onClose,onDone}) {
+export default function InvoiceForm({patientId,doctors,invoice,fromPlan,fromRecords,onClose,onDone}) {
   // An issued invoice is editable: 026 removed the freeze, the database
   // re-totals from the lines, and the previous version is kept automatically.
   const editing=Boolean(invoice)
-  const [items,setItems]=useState(invoice?.items?.length?invoice.items.map(i=>({...emptyInvoiceLine(),...i})):fromPlan?.items?.length?fromPlan.items.map(i=>({...emptyInvoiceLine(),...i})):[emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(invoice?.source_plan_id||fromPlan?.id||''),[doctor,setDoctor]=useState(invoice?.doctor_id||''),[notes,setNotes]=useState(invoice?.notes||''),[busy,setBusy]=useState(false)
+  const [items,setItems]=useState(invoice?.items?.length?invoice.items.map(i=>({...emptyInvoiceLine(),...i})):fromPlan?.items?.length?fromPlan.items.map(i=>({...emptyInvoiceLine(),...i})):fromRecords?.length?invoiceLinesFrom(fromRecords).map(i=>({...emptyInvoiceLine(),...i})):[emptyInvoiceLine()]),[plans,setPlans]=useState([]),[records,setRecords]=useState([]),[plan,setPlan]=useState(invoice?.source_plan_id||fromPlan?.id||''),[doctor,setDoctor]=useState(invoice?.doctor_id||''),[notes,setNotes]=useState(invoice?.notes||''),[busy,setBusy]=useState(false)
   const lock=useRef(false),toast=useToast(),totals=invoiceTotals(items)
   useEffect(()=>{
     Promise.all([
@@ -19,7 +20,7 @@ export default function InvoiceForm({patientId,doctors,invoice,fromPlan,onClose,
     ]).then(([p,r])=>{setPlans(p);setRecords(r)}).catch(e=>toast(e.message))
   },[patientId])
   function usePlan(id){setPlan(id);if(!id)return;const p=plans.find(p=>p.id===id);if(!p){if(fromPlan?.id===id&&fromPlan.items?.length)setItems(fromPlan.items.map(i=>({...emptyInvoiceLine(),...i})));return}const stages=[...(p.treatment_plan_stages||[])].sort((a,b)=>a.stage_number-b.stage_number);setItems(stages.length?stages.map(s=>({...emptyInvoiceLine(),description:s.description||`Stage ${s.stage_number}`,unit_price:s.estimated_cost||0})):[{...emptyInvoiceLine(),description:p.plan_description||'Treatment plan',unit_price:p.total_estimated_cost||0}])}
-  function addRecord(id){const r=records.find(r=>r.id===id);if(!r)return;const line={...emptyInvoiceLine(),description:r.treatments?.name||r.notes||'Treatment',tooth_number:r.tooth_number||'',unit_price:r.treatments?.price_min||0,treatment_record_id:r.id};setItems(rows=>rows.length===1&&!rows[0].description?[line]:[...rows,line]);setPlan('')}
+  function addRecord(id){const r=records.find(r=>r.id===id);if(!r)return;const line={...emptyInvoiceLine(),description:r.treatments?.name||r.notes||'Treatment',tooth_number:r.tooth_number||'',unit_price:Number(r.amount??r.treatments?.price_min??0),treatment_record_id:r.id};setItems(rows=>rows.length===1&&!rows[0].description?[line]:[...rows,line]);setPlan('')}
   // A plan opened straight from the plan screen may not be approved yet, so it
   // is listed alongside the approved estimates rather than silently missing.
   const planOptions=fromPlan&&!plans.some(p=>p.id===fromPlan.id)?[{...fromPlan,unapproved:!fromPlan.patient_approved},...plans]:plans

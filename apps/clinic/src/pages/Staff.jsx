@@ -8,7 +8,7 @@ import { logActivity } from '../lib/activityLog'
 
 export default function Staff() {
   const [rows, setRows] = useState(null)
-  const [show, setShow] = useState(false)
+  const [form, setForm] = useState(null) // {} to add, the row to edit
   const [invite, setInvite] = useState(null) // staff row being invited
   const [leave, setLeave] = useState(null) // staff row whose leave is being managed
   const toast = useToast()
@@ -34,7 +34,7 @@ export default function Staff() {
     <>
       <div className="pagehead">
         <h2>Staff</h2>
-        {isAdmin && <button className="btn" onClick={() => setShow(true)}>+ Add staff</button>}
+        {isAdmin && <button className="btn" onClick={() => setForm({})}>+ Add staff</button>}
       </div>
       {!isAdmin && (
         <p style={{ fontSize: '.74rem', color: 'var(--mid)', marginBottom: '1rem' }}>
@@ -53,6 +53,7 @@ export default function Staff() {
               <td>{s.user_id ? <span className="badge b-completed">linked</span> : <span className="badge b-cancelled">no login</span>}</td>
               <td><input type="checkbox" style={{ width: 'auto' }} checked={s.active} disabled={!isAdmin} onChange={e => toggle(s.id, e.target.checked)} /></td>
               <td>
+                {isAdmin && <button className="btn sm ghost" onClick={() => setForm(s)}>Edit</button>}{' '}
                 {s.role === 'doctor' && <button className="btn sm ghost" onClick={() => setLeave(s)}>Leave</button>}{' '}
                 {isAdmin && !s.user_id && <button className="btn sm ghost" onClick={() => setInvite(s)}>Invite login</button>}
               </td>
@@ -60,7 +61,7 @@ export default function Staff() {
           ))}</tbody>
         </table>
       )}
-      {show && <StaffForm onClose={() => setShow(false)} onDone={() => { setShow(false); load() }} />}
+      {form && <StaffForm staff={form.id ? form : null} onClose={() => setForm(null)} onDone={() => { setForm(null); load() }} />}
       {invite && <InviteForm staff={invite} onClose={() => setInvite(null)} onDone={() => { setInvite(null); load() }} />}
       {leave && <LeaveForm staff={leave} onClose={() => setLeave(null)} />}
     </>
@@ -120,35 +121,53 @@ function LeaveForm({ staff, onClose }) {
   )
 }
 
-function StaffForm({ onClose, onDone }) {
-  const [f, setF] = useState({ full_name: '', role: 'doctor', floor_assigned: '', specialization: '', qualifications: '', phone: '', email: '' })
+function StaffForm({ staff, onClose, onDone }) {
+  const editing = Boolean(staff)
+  const [f, setF] = useState({
+    full_name: staff?.full_name || '', role: staff?.role || 'doctor', floor_assigned: staff?.floor_assigned ?? '',
+    specialization: staff?.specialization || '', qualifications: staff?.qualifications || '', phone: staff?.phone || '', email: staff?.email || '',
+  })
+  const [busy, setBusy] = useState(false)
   const toast = useToast()
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
+  const roleChanged = editing && f.role !== staff.role
+
   async function save() {
     if (!f.full_name.trim()) return toast('Name required.')
-    const { error } = await sb.from('staff').insert({
+    setBusy(true)
+    const row = {
       full_name: f.full_name.trim(), role: f.role,
       specialization: f.specialization.trim() || null, qualifications: f.qualifications.trim() || null,
       floor_assigned: parseInt(f.floor_assigned) || null, phone: f.phone.trim() || null, email: f.email.trim() || null,
-    })
+    }
+    const { error } = editing
+      ? await sb.from('staff').update(row).eq('id', staff.id)
+      : await sb.from('staff').insert(row)
+    setBusy(false)
     if (error) return toast('Error: ' + error.message)
-    toast('Staff added'); onDone()
+    if (editing) logActivity(roleChanged ? 'staff.role_changed' : 'staff.updated', 'staff', staff.id,
+      roleChanged ? `${row.full_name} changed from ${staff.role} to ${row.role}` : `${row.full_name}'s details were updated`)
+    toast(editing ? 'Staff updated' : 'Staff added'); onDone()
   }
   return (
-    <Modal title="Add staff member" onClose={onClose}>
+    <Modal title={editing ? 'Edit staff member' : 'Add staff member'} onClose={() => !busy && onClose()}>
       <label>Full name *</label><input value={f.full_name} onChange={set('full_name')} />
       <div className="mrow">
         <div><label>Role</label><select value={f.role} onChange={set('role')}>
           {['doctor', 'receptionist', 'assistant', 'admin'].map(r => <option key={r}>{r}</option>)}</select></div>
         <div><label>Floor</label><input type="number" value={f.floor_assigned} onChange={set('floor_assigned')} /></div>
       </div>
+      {roleChanged && staff.user_id && (
+        <p className="allergy-alert">{staff.full_name} can already sign in. Changing the role changes what they can do the next time they open the app.</p>
+      )}
       <label>Specialization</label><input placeholder="Oral & Maxillofacial Surgery" value={f.specialization} onChange={set('specialization')} />
       <label>Qualifications</label><input placeholder="MDS, MOMS RCPS Glasgow" value={f.qualifications} onChange={set('qualifications')} />
       <div className="mrow">
         <div><label>Phone</label><input value={f.phone} onChange={set('phone')} /></div>
         <div><label>Email</label><input value={f.email} onChange={set('email')} /></div>
       </div>
-      <button className="btn" onClick={save}>Save</button>
+      {editing && staff.user_id && <p className="sub">Changing the email here does not change the address they sign in with.</p>}
+      <button className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Save'}</button>
     </Modal>
   )
 }

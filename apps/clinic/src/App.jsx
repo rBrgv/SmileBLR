@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Bookings from './pages/Bookings'
 import Patients from './pages/Patients'
+import Duplicates from './pages/Duplicates'
 import PatientDetail from './pages/PatientDetail'
 import Appointments from './pages/Appointments'
 import Waitlist from './pages/Waitlist'
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/bookings" element={<Bookings />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/patients/:id" element={<PatientDetail />} />
+            <Route path="/duplicates" element={<Duplicates />} />
             <Route path="/appointments" element={<Appointments />} />
             <Route path="/waitlist" element={<Waitlist />} />
             <Route path="/treatment-plans" element={<TreatmentPlans />} />
