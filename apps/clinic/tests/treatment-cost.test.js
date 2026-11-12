@@ -58,6 +58,19 @@ test('a procedure carries its cost; the backfill copies only what is unambiguous
     assert.deepEqual(logged.map(l => [l.was, l.now]), [[null, '2500.50']])
     await assert.rejects(db.query('UPDATE treatment_records SET amount = -1 WHERE tooth_number = 21'), /check constraint/)
 
+    // 034: every record was one unit, no discount, completed — so no total moved.
+    const lines = (await db.query('SELECT units, discount, status FROM treatment_records')).rows
+    assert.ok(lines.every(l => l.units === 1 && Number(l.discount) === 0 && l.status === 'completed'), 'existing records keep their meaning')
+    await db.query("UPDATE treatment_records SET units = 2, discount = 1000, status = 'in_progress' WHERE tooth_number = 21")
+    const edited = (await db.query('SELECT units, discount, status FROM treatment_records WHERE tooth_number = 21')).rows[0]
+    assert.deepEqual([edited.units, Number(edited.discount), edited.status], [2, 1000, 'in_progress'])
+    // Two units at 2,500.50 come to 5,001, so a discount of 5,002 is nonsense; 5,001 is a free line.
+    await assert.rejects(db.query('UPDATE treatment_records SET discount = 5002 WHERE tooth_number = 21'), /treatment_record_discount_within_cost/)
+    await db.query('UPDATE treatment_records SET discount = 5001 WHERE tooth_number = 21')
+    await assert.rejects(db.query('UPDATE treatment_records SET units = 0 WHERE tooth_number = 21'), /check constraint/)
+    await assert.rejects(db.query("UPDATE treatment_records SET status = 'finished' WHERE tooth_number = 21"), /check constraint/)
+    await db.query("UPDATE treatment_records SET units = 2, discount = 1000, status = 'completed' WHERE tooth_number = 21")
+
     // Reception cannot change a clinical record, cost included.
     await as('receptionist')
     await db.query('UPDATE treatment_records SET amount = 1 WHERE tooth_number = 21')

@@ -104,6 +104,8 @@ Inside a plan, one row of buttons does the next things:
 
 Each stage has a status: **Planned, Scheduled, In progress, Completed, Not Treated**. Use *Not Treated* when the patient chose to skip it.
 
+To correct a plan, click **Edit plan** (description and estimate) or **Edit** on a stage (number, description, cost). If you change a stage's cost, **Edit plan** shows what the stages now add up to, with one click to use it.
+
 ### Step 5: Consent
 
 1. Open **Sign consent** from the plan, or go to **Consent Forms → + New form**.
@@ -118,7 +120,9 @@ If something was entered wrongly on a signed form, click **Correct**. The origin
 - **From a plan:** click **Log treatment** on the stage. Fill in tooth, notes, follow-up.
 - **Without a plan:** patient page → **Treatment Records → + New record**.
 - **Several teeth for one procedure** (for example, caps measured for two teeth): choose every tooth in the **Tooth number(s)** box. One record is saved for each tooth.
-- **Cost:** type what the procedure cost. With several teeth, the cost is *per tooth*, and the form shows the total. Leave it empty if unknown. The treatment list shows each cost and a total.
+- **Cost, units and discount:** type the **cost each**, how many **units**, and any **discount** in rupees. The form shows the total as you type. With several teeth, each tooth gets the same units and cost. Leave the cost empty if unknown.
+- **Status:** *Planned, In Progress, Completed or Not Treated*. Change it straight from the list. Work marked Not Treated is left out of the totals.
+- **The treatment list** works like the old treatment screen: each procedure with units, cost, discount, total and status, with its notes underneath. Under the table you see **Total cost, Total discount and Grand total**, then **Billed on invoices, Received, Balance due on bills** and **Not yet billed**. Paid and balance come from the payments recorded on the bills, so they always match the receipts.
 - **Wrong tooth, date or cost?** Click **Edit** on the record.
 - If the patient needs a call back, tick **follow-up required**. A date is suggested; change it if you want. From that date it shows on the **Dashboard** with a **Call** button. After ringing, click **Mark called** on the treatment record so it disappears.
 

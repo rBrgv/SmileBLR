@@ -15,6 +15,7 @@ import SignaturePad from '../components/SignaturePad'
 import { logActivity } from '../lib/activityLog'
 import InvoiceForm from '../components/InvoiceForm'
 import { ConsentFormForm, SignForm } from './ConsentForms'
+import PatientPicker from '../components/PatientPicker'
 import { waLink, planMessage } from '../lib/share'
 
 export const PLAN_STATUSES = ['proposed', 'accepted', 'in_progress', 'completed', 'cancelled']
@@ -106,17 +107,12 @@ export default function TreatmentPlans() {
 }
 
 function PlanForm({ onClose, onDone }) {
-  const [patients, setPatients] = useState([])
   const [templates, setTemplates] = useState([])
   const [f, setF] = useState({ patient_id: '', plan_description: '', total_estimated_cost: '', template_id: '' })
   const toast = useToast()
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
 
   useEffect(() => {
-    sb.from('patients').select('id,full_name').order('full_name').then(({ data }) => {
-      setPatients(data ?? [])
-      if (data?.length) setF(x => ({ ...x, patient_id: data[0].id }))
-    })
     sb.from('plan_templates').select('*, plan_template_stages(id,description,estimated_cost)').order('name').then(({ data }) => setTemplates(data ?? []))
   }, [])
 
@@ -153,9 +149,7 @@ function PlanForm({ onClose, onDone }) {
   return (
     <Modal title="New treatment plan" onClose={onClose}>
       <label>Patient *</label>
-      <select value={f.patient_id} onChange={set('patient_id')}>
-        {patients.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-      </select>
+      <PatientPicker value={f.patient_id} onChange={id => setF(x => ({ ...x, patient_id: id }))} />
       {templates.length > 0 && (
         <>
           <label>Start from template (optional)</label>
@@ -333,6 +327,8 @@ function PlanDetail({ id, onClose, onChanged }) {
   const [logStage, setLogStage] = useState(null)
   const [loggedByStage, setLoggedByStage] = useState({})
   const [showApproval, setShowApproval] = useState(false)
+  const [editStage, setEditStage] = useState(null)
+  const [editPlan, setEditPlan] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
   const [showConsent, setShowConsent] = useState(false)
   const [signConsent, setSignConsent] = useState(null)
@@ -402,6 +398,7 @@ function PlanDetail({ id, onClose, onChanged }) {
           ? <a className="btn sm green" target="_blank" rel="noreferrer" href={waLink(plan.patients.phone, planMessage(plan, stages, plan.patients))}>Share</a>
           : null}
         <a className="btn sm ghost" target="_blank" rel="noreferrer" href={'/print/plan/' + id}>Print estimate</a>
+        <ClinicalButton className="btn sm ghost" onClick={() => setEditPlan(true)}>Edit plan</ClinicalButton>
         <ClinicalButton className="btn sm ghost" onClick={() => setShowConsent(true)}>Sign consent</ClinicalButton>
         <button className="btn sm ghost" onClick={() => nav('/patients/' + plan.patient_id + '?tab=Consultations')}>Consultation summary</button>
       </div>
@@ -427,6 +424,7 @@ function PlanDetail({ id, onClose, onChanged }) {
               </td>
               <td><StatusSelect disabled={!canWriteClinical(role)} value={s.status} options={STAGE_STATUSES} onChange={st => setStageStatus(s, st)} /></td>
               <td>
+                <ClinicalButton className="btn sm ghost" onClick={() => setEditStage(s)}>Edit</ClinicalButton>{' '}
                 {loggedByStage[s.id]
                   ? <span className="badge b-completed">logged</span>
                   : <ClinicalButton className="btn sm ghost" onClick={() => setLogStage(s)}>Log treatment</ClinicalButton>}{' '}
@@ -437,6 +435,8 @@ function PlanDetail({ id, onClose, onChanged }) {
         </table>
       )}
       {showStage && <StageForm planId={id} nextNum={(stages.length || 0) + 1} onClose={() => setShowStage(false)} onDone={() => { setShowStage(false); load(); onChanged() }} />}
+      {editStage && <StageForm planId={id} stage={editStage} nextNum={editStage.stage_number} onClose={() => setEditStage(null)} onDone={() => { setEditStage(null); load(); onChanged() }} />}
+      {editPlan && <PlanEditForm plan={plan} stages={stages} onClose={() => setEditPlan(false)} onDone={() => { setEditPlan(false); load(); onChanged() }} />}
       {confirmDel && <ConfirmDialog title="Delete this stage?" onCancel={() => setConfirmDel(null)}
         onConfirm={() => { removeStage(confirmDel); setConfirmDel(null) }} />}
       {logStage && <RecordForm patientId={plan.patient_id} stageId={logStage.id} onClose={() => setLogStage(null)}
@@ -453,24 +453,55 @@ function PlanDetail({ id, onClose, onChanged }) {
   )
 }
 
-function StageForm({ planId, nextNum, onClose, onDone }) {
-  const [f, setF] = useState({ stage_number: nextNum, description: '', estimated_cost: '' })
+function StageForm({ planId, nextNum, stage, onClose, onDone }) {
+  const editing = Boolean(stage)
+  const [f, setF] = useState({ stage_number: stage?.stage_number ?? nextNum, description: stage?.description || '', estimated_cost: stage?.estimated_cost ?? '' })
   const toast = useToast()
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
   async function save() {
-    const { error } = await sb.from('treatment_plan_stages').insert({
-      plan_id: planId, stage_number: parseInt(f.stage_number) || nextNum,
+    const row = {
+      stage_number: parseInt(f.stage_number) || nextNum,
       description: f.description.trim() || null, estimated_cost: parseFloat(f.estimated_cost) || null,
-    })
+    }
+    const { error } = editing
+      ? await sb.from('treatment_plan_stages').update(row).eq('id', stage.id)
+      : await sb.from('treatment_plan_stages').insert({ plan_id: planId, ...row })
     if (error) return toast('Error: ' + error.message)
-    toast('Stage added'); onDone()
+    toast(editing ? 'Stage updated' : 'Stage added'); onDone()
   }
   return (
-    <Modal title="Add stage" onClose={onClose}>
+    <Modal title={editing ? 'Edit stage' : 'Add stage'} onClose={onClose}>
       <label>Stage number</label><input type="number" value={f.stage_number} onChange={set('stage_number')} />
       <label>Description</label><input value={f.description} onChange={set('description')} />
       <label>Estimated cost</label><input type="number" value={f.estimated_cost} onChange={set('estimated_cost')} />
-      <ClinicalButton className="btn" onClick={save}>Save stage</ClinicalButton>
+      <ClinicalButton className="btn" onClick={save}>{editing ? 'Save changes' : 'Save stage'}</ClinicalButton>
+    </Modal>
+  )
+}
+
+// The plan's own description and estimate. The estimate is typed, not summed,
+// so editing a stage's cost does not move it; the stages' total is shown next
+// to it so the two can be brought into line with one click.
+function PlanEditForm({ plan, stages, onClose, onDone }) {
+  const [description, setDescription] = useState(plan.plan_description || '')
+  const [estimate, setEstimate] = useState(plan.total_estimated_cost ?? '')
+  const toast = useToast()
+  const stageTotal = stages.reduce((a, x) => a + Number(x.estimated_cost || 0), 0)
+  async function save() {
+    const { error } = await sb.from('treatment_plans').update({
+      plan_description: description.trim() || null, total_estimated_cost: estimate === '' ? null : Number(estimate),
+    }).eq('id', plan.id)
+    if (error) return toast('Error: ' + error.message)
+    toast('Plan updated'); onDone()
+  }
+  return (
+    <Modal title="Edit plan" onClose={onClose}>
+      <label>Description</label><input value={description} onChange={e => setDescription(e.target.value)} />
+      <label>Estimated cost (₹)</label><input type="number" min="0" value={estimate} onChange={e => setEstimate(e.target.value)} />
+      {stages.length > 0 && Number(estimate) !== stageTotal && (
+        <p className="sub">The stages add up to <b>{inr(stageTotal)}</b>. <button type="button" className="btn sm ghost" onClick={() => setEstimate(String(stageTotal))}>Use this total</button></p>
+      )}
+      <ClinicalButton className="btn" onClick={save}>Save changes</ClinicalButton>
     </Modal>
   )
 }

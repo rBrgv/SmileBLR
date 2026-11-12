@@ -1,15 +1,30 @@
 import { inr } from './format.js'
 
-// A cost the clinic never wrote down is blank, not zero, so a total over a list
-// says how many rows it could not count rather than quietly undercounting.
-export function costTotal(rows) {
-  let total = 0, missing = 0
-  for (const r of rows) {
-    if (r.amount == null) missing++
-    else total += Number(r.amount)
-  }
-  return { total: Math.round(total * 100) / 100, missing }
+const round = n => Math.round(n * 100) / 100
+
+// What one line comes to: units at the cost each, less its discount. A line
+// with no cost is unknown, not zero, and has no total.
+export function recordTotal(r) {
+  if (r.amount == null) return null
+  return round(Number(r.units ?? 1) * Number(r.amount) - Number(r.discount ?? 0))
 }
+
+// Totals over a list of lines. Work marked Not Treated was never done or
+// charged, so it is left out; everything else counts, planned lines included,
+// as on the clinic's old treatment screen. A line with no cost is counted in
+// `missing` rather than quietly as zero, so a total says what it could not add.
+export function recordTotals(rows) {
+  let cost = 0, discount = 0, missing = 0
+  for (const r of rows) {
+    if (r.status === 'not_treated') continue
+    if (r.amount == null) { missing++; continue }
+    cost += Number(r.units ?? 1) * Number(r.amount)
+    discount += Number(r.discount ?? 0)
+  }
+  return { cost: round(cost), discount: round(discount), grand: round(cost - discount), missing }
+}
+
+export const costTotal = rows => { const t = recordTotals(rows); return { total: t.grand, missing: t.missing } }
 
 export const costSummary = rows => {
   const { total, missing } = costTotal(rows)
@@ -32,7 +47,7 @@ export function recordRows(base, teeth) {
 // treatment list shows.
 export const invoiceLinesFrom = records => records.map(r => ({
   description: r.treatments?.name || r.notes || 'Treatment',
-  tooth_number: r.tooth_number ?? '', quantity: 1, discount: 0, tax_rate: 0,
+  tooth_number: r.tooth_number ?? '', quantity: Number(r.units ?? 1), discount: Number(r.discount ?? 0), tax_rate: 0,
   unit_price: Number(r.amount ?? r.treatments?.price_min ?? 0),
   treatment_record_id: r.id,
 }))

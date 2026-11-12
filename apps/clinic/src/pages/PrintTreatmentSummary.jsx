@@ -8,6 +8,7 @@ import { statusLabel } from '../lib/status'
 import { toothLabel } from '../lib/teeth'
 import { invoiceNo } from '../lib/bills'
 import { rupeesInWords } from '../lib/words'
+import { recordTotal, recordTotals } from '../lib/records'
 import PrintDoc from '../components/PrintDoc'
 
 // Everything done for this patient, on one sheet: what was treated, what is
@@ -45,18 +46,31 @@ export default function PrintTreatmentSummary() {
         <h4>Treatment carried out · {records.length} {records.length === 1 ? 'record' : 'records'}</h4>
         {records.length ? (
           <table className="tbl">
-            <thead><tr><th>Date</th><th>Tooth</th><th>Treatment</th><th>By</th><th>Notes</th></tr></thead>
+            <thead><tr><th>Date</th><th>Tooth</th><th>Treatment</th><th>By</th><th>Units</th><th>Cost</th><th>Discount</th><th>Total</th><th>Status</th></tr></thead>
             <tbody>{records.map(r => (
               <tr key={r.id}>
                 <td>{fmtD(r.performed_date)}</td>
                 <td>{r.tooth_number ? toothLabel(r.tooth_number) : '—'}</td>
                 <td>{r.treatments?.name || '—'}</td>
                 <td>{r.staff?.full_name || '—'}</td>
-                <td>{r.notes || '—'}</td>
+                <td>{r.units ?? 1}</td>
+                <td>{r.amount == null ? '—' : inr(r.amount)}</td>
+                <td>{Number(r.discount) > 0 ? inr(r.discount) : '—'}</td>
+                <td>{r.amount == null ? '—' : inr(recordTotal(r))}</td>
+                <td>{statusLabel(r.status ?? 'completed')}</td>
               </tr>
             ))}</tbody>
           </table>
         ) : <p>No treatment recorded.</p>}
+        {records.length > 0 && (() => {
+          const t = recordTotals(records)
+          return (
+            <p style={{ textAlign: 'right', marginTop: '.5rem' }}>
+              Total cost {inr(t.cost)} · Discount {inr(t.discount)} · <b>Grand total {inr(t.grand)}</b>
+              {t.missing ? ` (${t.missing} without a cost)` : ''}
+            </p>
+          )
+        })()}
       </div>
 
       <div className="print-block">

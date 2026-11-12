@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { fmtD, inr } from '../lib/format'
-import { costSummary } from '../lib/records'
+import { costSummary, recordTotal } from '../lib/records'
+import { statusLabel } from '../lib/status'
 import { useToast } from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { RecordForm } from '../components/TreatmentRecordPanel'
@@ -51,14 +52,18 @@ export default function TreatmentRecords() {
       {view.length > 0 && <p className="sub" style={{ marginBottom: '.5rem' }}>Total cost of the {view.length} shown: <b>{costSummary(view)}</b></p>}
       {!view.length ? <div className="empty">No treatment records yet.</div> : (
         <table className="tbl">
-          <thead><tr><th>Date</th><th>Patient</th><th>Treatment</th><th>Tooth</th><th>By</th><th>Cost</th><th>Follow-up</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Patient</th><th>Treatment</th><th>Tooth</th><th>By</th><th>Units</th><th>Cost</th><th>Discount</th><th>Total</th><th>Status</th><th>Follow-up</th><th></th></tr></thead>
           <tbody>{view.map(r => (
             <tr key={r.id}>
               <td>{fmtD(r.performed_date)}</td>
               <td className="link" onClick={() => nav('/patients/' + r.patients?.id)}>{r.patients?.full_name}</td>
               <td>{r.treatments?.name || '—'}</td><td>{r.tooth_number || '—'}</td>
               <td>{r.staff?.full_name || '—'}</td>
+              <td>{r.units ?? 1}</td>
               <td>{r.amount == null ? '—' : inr(r.amount)}</td>
+              <td>{Number(r.discount) > 0 ? inr(r.discount) : '—'}</td>
+              <td><b>{r.amount == null ? '—' : inr(recordTotal(r))}</b></td>
+              <td>{statusLabel(r.status ?? 'completed')}</td>
               <td>{r.follow_up_required ? fmtD(r.follow_up_date) : '—'}
                 {r.follow_up_required && <>{' '}<button className="btn sm ghost" onClick={() => markCalled(r.id)}>Mark called</button></>}</td>
               <td>

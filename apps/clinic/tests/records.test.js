@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { invoiceLinesFrom, billedRecords } from '../src/lib/records.js'
+import { invoiceLinesFrom, billedRecords, recordTotal, recordTotals } from '../src/lib/records.js'
 
 test('an invoice line takes the procedure\'s own cost, and only then the list price', () => {
   const lines = invoiceLinesFrom([
@@ -20,4 +20,29 @@ test('records already on an invoice are found, so a procedure is not billed twic
   assert.equal(map.a, inv1)
   assert.equal(map.b, undefined)
   assert.deepEqual(Object.keys(map), ['a'])
+})
+
+test('a line is units at the cost each, less its discount, and unknown when it has no cost', () => {
+  assert.equal(recordTotal({ amount: '5000.00', units: 2, discount: '500.00' }), 9500)
+  assert.equal(recordTotal({ amount: 800 }), 800, 'units default to one, discount to none')
+  assert.equal(recordTotal({ amount: 0.1, units: 3 }), 0.3, 'no floating point drift')
+  assert.equal(recordTotal({ amount: null, units: 2 }), null)
+})
+
+test('totals leave out work that was not treated and say what they could not count', () => {
+  assert.deepEqual(
+    recordTotals([
+      { amount: 5000, units: 2, discount: 500 },
+      { amount: 1000 },
+      { amount: null },
+      { amount: 900, status: 'not_treated' },
+    ]),
+    { cost: 11000, discount: 500, grand: 10500, missing: 1 },
+  )
+  assert.deepEqual(recordTotals([]), { cost: 0, discount: 0, grand: 0, missing: 0 })
+})
+
+test('billing a line carries its units and discount onto the invoice', () => {
+  const [line] = invoiceLinesFrom([{ id: 'a', amount: '5000', units: 2, discount: '500', treatments: { name: 'Filling' }, tooth_number: 26 }])
+  assert.deepEqual([line.quantity, line.unit_price, line.discount], [2, 5000, 500])
 })
