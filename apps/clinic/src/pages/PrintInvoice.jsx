@@ -23,16 +23,25 @@ export default function PrintInvoice() {
   const { id } = useParams()
   const [inv, setInv] = useState(null)
   const [payments, setPayments] = useState([])
+  const [done, setDone] = useState([])
 
   useEffect(() => {
-    sb.from('invoices').select('*, patients(*), staff(full_name)').eq('id', id).single().then(({ data }) => setInv(data))
+    sb.from('invoices').select('*, patients(*), staff(full_name, registration_number)').eq('id', id).single().then(({ data }) => setInv(data))
+    // Older invoices were saved as a single amount with no procedures. Name what
+    // was done that day from the treatment records instead of a generic label.
+    sb.from('invoices').select('patient_id, invoice_date, items, notes').eq('id', id).single().then(({ data: i }) => {
+      if (!i || i.items?.length || i.notes?.trim() || !i.invoice_date) return
+      sb.from('treatment_records').select('tooth_number, notes, treatments(name)').eq('patient_id', i.patient_id)
+        .eq('performed_date', i.invoice_date).is('deleted_at', null).order('id').then(({ data }) => setDone(data ?? []))
+    })
     sb.from('invoice_payment_changes').select('*').eq('invoice_id', id).order('created_at').order('receipt_number')
       .then(({ data }) => setPayments(data ?? []))
   }, [id])
 
   if (!inv) return <div className="empty">Loading…</div>
   const p = inv.patients
-  const lines = inv.items?.length ? inv.items : [{ description: inv.notes || 'Dental treatment', quantity: 1, unit_price: inv.amount, discount: 0, tax_rate: 0 }]
+  const doneNames = [...new Set(done.map(r => (r.treatments?.name || r.notes || '').trim() + (r.tooth_number ? ` (tooth ${r.tooth_number})` : '')).filter(Boolean))].join(', ')
+  const lines = inv.items?.length ? inv.items : [{ description: inv.notes || doneNames || 'Dental treatment', quantity: 1, unit_price: inv.amount, discount: 0, tax_rate: 0 }]
   const hasDiscount = lines.some(l => Number(l.discount) > 0)
   const hasTax = lines.some(l => Number(l.tax_rate) > 0)
   const grand = Number(inv.amount) + Number(inv.tax_amount || 0)
@@ -57,6 +66,7 @@ export default function PrintInvoice() {
               <div><b>Invoice Id : {invoiceNo(inv)}</b></div>
               <div><b>Date : {fmtD(inv.invoice_date)}</b></div>
               {inv.staff?.full_name && <div>Doctor : {inv.staff.full_name}</div>}
+              {inv.staff?.registration_number && <div>{inv.staff.registration_number}</div>}
             </td>
           </tr>
         </tbody>

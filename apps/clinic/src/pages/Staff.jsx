@@ -125,7 +125,7 @@ function StaffForm({ staff, onClose, onDone }) {
   const editing = Boolean(staff)
   const [f, setF] = useState({
     full_name: staff?.full_name || '', role: staff?.role || 'doctor', floor_assigned: staff?.floor_assigned ?? '',
-    specialization: staff?.specialization || '', qualifications: staff?.qualifications || '', phone: staff?.phone || '', email: staff?.email || '',
+    specialization: staff?.specialization || '', qualifications: staff?.qualifications || '', registration_number: staff?.registration_number || '', phone: staff?.phone || '', email: staff?.email || '',
   })
   const [busy, setBusy] = useState(false)
   const toast = useToast()
@@ -137,7 +137,7 @@ function StaffForm({ staff, onClose, onDone }) {
     setBusy(true)
     const row = {
       full_name: f.full_name.trim(), role: f.role,
-      specialization: f.specialization.trim() || null, qualifications: f.qualifications.trim() || null,
+      specialization: f.specialization.trim() || null, qualifications: f.qualifications.trim() || null, registration_number: f.registration_number.trim() || null,
       floor_assigned: parseInt(f.floor_assigned) || null, phone: f.phone.trim() || null, email: f.email.trim() || null,
     }
     const { error } = editing
@@ -162,6 +162,8 @@ function StaffForm({ staff, onClose, onDone }) {
       )}
       <label>Specialization</label><input placeholder="Oral & Maxillofacial Surgery" value={f.specialization} onChange={set('specialization')} />
       <label>Qualifications</label><input placeholder="MDS, MOMS RCPS Glasgow" value={f.qualifications} onChange={set('qualifications')} />
+      <label>Registration number</label><input placeholder="KSDC No: 15948-A" value={f.registration_number} onChange={set('registration_number')} />
+      <p className="sub">Printed under the doctor's name on invoices, for insurance claims.</p>
       <div className="mrow">
         <div><label>Phone</label><input value={f.phone} onChange={set('phone')} /></div>
         <div><label>Email</label><input value={f.email} onChange={set('email')} /></div>
